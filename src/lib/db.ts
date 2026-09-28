@@ -63,10 +63,23 @@ export function getSystemDb(): PrismaClient {
  * organization. It is scoped explicitly at its call sites instead.
  */
 export const TENANT_MODELS: ReadonlySet<string> = new Set<string>([
+  // Organization and access
   'Membership',
   'Invitation',
   'MembershipRole',
   'ResourcePolicy',
+
+  // CRM
+  'Company',
+  'Contact',
+  'Lead',
+  'Pipeline',
+  'PipelineStage',
+  'Deal',
+  'DealStageHistory',
+  'Activity',
+  'Tag',
+  'EntityTag',
 ])
 
 /** Prisma delegate property name (`membership`) for a model name (`Membership`). */

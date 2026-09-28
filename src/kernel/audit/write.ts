@@ -12,28 +12,18 @@ import { getSystemDb, type Prisma } from '@/lib/db'
  * describes failed (a rejected sign-in, a reset for an unknown address).
  */
 
-export type AuditAction =
-  | 'auth.signed_up'
-  | 'auth.signed_in'
-  | 'auth.signed_out'
-  | 'auth.sign_in_failed'
-  | 'auth.email_verified'
-  | 'auth.verification_resent'
-  | 'auth.password_reset_requested'
-  | 'auth.password_reset_completed'
-  | 'auth.password_changed'
-  | 'auth.session_revoked'
-  | 'auth.sessions_revoked_all'
-  | 'organization.created'
-  | 'organization.updated'
-  | 'organization.member_invited'
-  | 'organization.invitation_revoked'
-  | 'organization.member_joined'
-  | 'organization.member_suspended'
-  | 'organization.member_reinstated'
-  | 'organization.member_removed'
-  | 'organization.role_assigned'
-  | 'organization.role_unassigned'
+/**
+ * An audited action, written as `module.thing_that_happened`.
+ *
+ * A pattern rather than a central union on purpose: a union would mean every
+ * module editing one shared file to add its own actions, which turns an
+ * append-only log into a merge-conflict magnet. The dot is still enforced, so
+ * the module prefix is always present and the log stays groupable.
+ *
+ * Examples: `auth.signed_in`, `crm.deal.stage_changed`,
+ * `finance.invoice.approved`.
+ */
+export type AuditAction = `${string}.${string}`
 
 export interface AuditInput {
   action: AuditAction

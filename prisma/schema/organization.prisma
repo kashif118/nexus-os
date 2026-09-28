@@ -56,6 +56,17 @@ model Organization {
   membershipRoles  MembershipRole[]
   resourcePolicies ResourcePolicy[]
 
+  companies        Company[]
+  contacts         Contact[]
+  leads            Lead[]
+  pipelines        Pipeline[]
+  pipelineStages   PipelineStage[]
+  deals            Deal[]
+  dealStageHistory DealStageHistory[]
+  activities       Activity[]
+  tags             Tag[]
+  entityTags       EntityTag[]
+
   @@index([status])
   @@index([createdById])
 }
@@ -85,6 +96,12 @@ model Membership {
   invitedBy    User?        @relation("MembershipInviter", fields: [invitedById], references: [id], onDelete: SetNull)
 
   roles MembershipRole[]
+
+  companiesOwned  Company[]  @relation("CompanyOwner")
+  contactsOwned   Contact[]  @relation("ContactOwner")
+  leadsOwned      Lead[]     @relation("LeadOwner")
+  dealsOwned      Deal[]     @relation("DealOwner")
+  activitiesOwned Activity[] @relation("ActivityOwner")
 
   /// One membership per user per organization — the constraint the whole
   /// multi-org model rests on.

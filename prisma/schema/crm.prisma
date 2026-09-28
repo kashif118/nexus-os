@@ -1,0 +1,336 @@
+// NEXUS OS — CRM (docs/DATA-MODEL.md §E.1.4).
+//
+// The CRM is where revenue starts, so its records are the ones that later link
+// outward: a Company becomes a project client and an invoice recipient, and a
+// won Deal converts into a Project. Those links are added by the phases that
+// introduce the other side; nothing here needs to change when they do.
+//
+// Every model carries a required organizationId and is therefore auto-scoped by
+// the org client (docs/PLATFORM.md §H.3).
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  UNQUALIFIED
+  CONVERTED
+}
+
+enum LeadSource {
+  WEBSITE
+  REFERRAL
+  OUTBOUND
+  EVENT
+  PARTNER
+  OTHER
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum StageType {
+  OPEN
+  WON
+  LOST
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  TASK
+}
+
+model Company {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name     String
+  domain   String?
+  industry String?
+  size     String?
+  website  String?
+  phone    String?
+
+  /// Postal address, schemaless because format varies by country.
+  address Json?
+
+  notes String?
+
+  /// The member who owns the relationship.
+  ownerMembershipId String?
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        Membership?  @relation("CompanyOwner", fields: [ownerMembershipId], references: [id], onDelete: SetNull)
+
+  contacts Contact[]
+  deals    Deal[]
+
+  @@index([organizationId, name])
+  @@index([organizationId, ownerMembershipId])
+  @@index([organizationId, createdAt])
+}
+
+model Contact {
+  id             String @id @default(cuid())
+  organizationId String
+  companyId      String?
+
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  position  String?
+  notes     String?
+
+  ownerMembershipId String?
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner        Membership?  @relation("ContactOwner", fields: [ownerMembershipId], references: [id], onDelete: SetNull)
+
+  deals Deal[]
+
+  @@index([organizationId, companyId])
+  @@index([organizationId, lastName])
+  @@index([organizationId, email])
+  @@index([organizationId, createdAt])
+}
+
+/// An unqualified enquiry. Converting one is recorded rather than destructive:
+/// the lead row survives with pointers to what it became, so funnel analytics
+/// can still see where the contact came from.
+model Lead {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name        String
+  email       String?
+  phone       String?
+  companyName String?
+
+  source LeadSource @default(OTHER)
+  status LeadStatus @default(NEW)
+
+  /// 0–100. Set manually today; a scoring model can populate it later.
+  score Int @default(0)
+
+  notes String?
+
+  ownerMembershipId String?
+
+  convertedContactId String?
+  convertedCompanyId String?
+  convertedDealId    String?
+  convertedAt        DateTime?
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        Membership?  @relation("LeadOwner", fields: [ownerMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, ownerMembershipId])
+  @@index([organizationId, email])
+}
+
+model Pipeline {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name      String
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages       PipelineStage[]
+  deals        Deal[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model PipelineStage {
+  id             String @id @default(cuid())
+  organizationId String
+  pipelineId     String
+
+  name String
+  /// Display order within the pipeline.
+  position Int
+  /// Forecast weighting, 0–100.
+  probability Int       @default(0)
+  type        StageType @default(OPEN)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipeline     Pipeline     @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  deals        Deal[]
+  historyFrom  DealStageHistory[] @relation("StageFrom")
+  historyTo    DealStageHistory[] @relation("StageTo")
+
+  @@unique([pipelineId, position])
+  @@index([organizationId, pipelineId])
+}
+
+model Deal {
+  id             String @id @default(cuid())
+  organizationId String
+
+  pipelineId String
+  stageId    String
+
+  companyId        String?
+  primaryContactId String?
+
+  title String
+
+  /// Integer minor units plus an ISO-4217 code — never a float
+  /// (docs/DATA-MODEL.md §E.0).
+  valueMinor BigInt @default(0)
+  currency   String @db.Char(3)
+
+  expectedCloseDate DateTime?
+
+  status     DealStatus @default(OPEN)
+  wonAt      DateTime?
+  lostAt     DateTime?
+  lostReason String?
+
+  ownerMembershipId String?
+
+  /// Set when a won deal becomes a project. The project side of this relation
+  /// is added by the projects phase.
+  convertedProjectId String?
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipeline       Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Restrict)
+  stage          PipelineStage @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  company        Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  primaryContact Contact?      @relation(fields: [primaryContactId], references: [id], onDelete: SetNull)
+  owner          Membership?   @relation("DealOwner", fields: [ownerMembershipId], references: [id], onDelete: SetNull)
+
+  stageHistory DealStageHistory[]
+
+  @@index([organizationId, stageId, status])
+  @@index([organizationId, status, expectedCloseDate])
+  @@index([organizationId, companyId])
+  @@index([organizationId, ownerMembershipId])
+}
+
+/// Append-only record of every stage move, which is what makes funnel
+/// conversion and stage velocity computable rather than guessed.
+model DealStageHistory {
+  id             String @id @default(cuid())
+  organizationId String
+  dealId         String
+
+  fromStageId String?
+  toStageId   String
+
+  changedById String?
+  changedAt   DateTime @default(now())
+
+  /// Seconds spent in the previous stage, computed at write time so analytics
+  /// never has to window over the whole table.
+  durationSeconds Int?
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deal         Deal           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  fromStage    PipelineStage? @relation("StageFrom", fields: [fromStageId], references: [id], onDelete: SetNull)
+  toStage      PipelineStage  @relation("StageTo", fields: [toStageId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, dealId, changedAt])
+}
+
+/// Polymorphic timeline entry: calls, emails, meetings and notes against any
+/// CRM record. Kept polymorphic rather than one table per parent so the
+/// timeline component works for every entity.
+model Activity {
+  id             String @id @default(cuid())
+  organizationId String
+
+  type    ActivityType
+  subject String
+  body    String?
+
+  dueAt       DateTime?
+  completedAt DateTime?
+
+  /// The record this is about: "Company", "Contact", "Lead", "Deal".
+  entityType String
+  entityId   String
+
+  ownerMembershipId String?
+  createdById       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        Membership?  @relation("ActivityOwner", fields: [ownerMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, entityType, entityId, createdAt])
+  @@index([organizationId, ownerMembershipId, dueAt])
+  @@index([organizationId, dueAt])
+}
+
+model Tag {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name  String
+  color String @default("neutral")
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entities     EntityTag[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model EntityTag {
+  id             String @id @default(cuid())
+  organizationId String
+  tagId          String
+
+  entityType String
+  entityId   String
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tag          Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, entityType, entityId])
+  @@index([organizationId, entityType, entityId])
+}

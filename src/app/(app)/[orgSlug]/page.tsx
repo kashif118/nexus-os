@@ -1,57 +1,97 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
+import { Suspense } from 'react'
 
+import { CardSkeleton, PageHeader } from '@/components/feedback/states'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { requireCtxPage } from '@/kernel/tenancy/ctx'
-import { listMembers } from '@/modules/organizations/queries'
+import { WidgetCard } from '@/modules/dashboard/components/widget-card'
+import { getDashboard } from '@/modules/dashboard/queries'
 
 export const metadata: Metadata = { title: 'Command Center' }
 
 /**
- * Organization home.
+ * The Executive Command Center.
  *
- * A placeholder for the Executive Command Center, which is built in Phase 06
- * against real project, task and finance data. It shows only what genuinely
- * exists today — the organization and its members — rather than mock KPIs.
+ * Renders the widget registry rather than a fixed set of cards: each module
+ * contributes widgets as it is built, filtered by the actor permissions, and
+ * every number comes from a real query against this organization.
+ *
+ * Widgets are streamed inside Suspense so a slow metric does not block the page.
  */
-export default async function OrgHomePage({ params }: { params: Promise<{ orgSlug: string }> }) {
+export default async function CommandCenterPage({
+  params,
+}: {
+  params: Promise<{ orgSlug: string }>
+}) {
   const { orgSlug } = await params
   const ctx = await requireCtxPage(orgSlug)
-  const members = await listMembers(ctx)
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight">{ctx.org.name}</h1>
-        <p className="text-muted-foreground text-sm">
-          The Executive Command Center is built in Phase 06 from real project, task and finance
-          data. Until those modules exist there is nothing honest to chart here.
-        </p>
-      </header>
+    <div className="mx-auto w-full max-w-6xl space-y-6">
+      <PageHeader
+        title={ctx.org.name}
+        description="Everything that needs your attention, from live organization data."
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardGrid orgSlug={orgSlug} />
+      </Suspense>
+    </div>
+  )
+}
+
+async function DashboardGrid({ orgSlug }: { orgSlug: string }) {
+  const ctx = await requireCtxPage(orgSlug)
+  const { widgets, pending } = await getDashboard(ctx)
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-12 gap-4">
+        {widgets.map((widget) => (
+          <WidgetCard key={widget.definition.id} widget={widget} />
+        ))}
+      </div>
+
+      {pending.length > 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>Members</CardTitle>
-            <CardDescription>People with access to this organization.</CardDescription>
+            <CardTitle>Coming as modules land</CardTitle>
+            <CardDescription>
+              The Command Center is a registry: each module contributes its own widgets, so these
+              appear here automatically once the module exists. Nothing is shown before it can be
+              answered from real data.
+            </CardDescription>
           </CardHeader>
-          <CardContent className="tabular text-3xl font-semibold">{members.length}</CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Workspace</CardTitle>
-            <CardDescription>Regional defaults for formatting and reporting.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-1 text-sm">
-            <p>
-              <span className="text-muted-foreground">Currency:</span> {ctx.org.currency}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Time zone:</span> {ctx.org.timezone}
+          <CardContent>
+            <ul className="divide-border divide-y text-sm">
+              {pending.map((entry) => (
+                <li key={entry.module} className="flex flex-wrap gap-x-3 gap-y-1 py-2">
+                  <span className="min-w-28 font-medium">{entry.module}</span>
+                  <span className="text-muted-foreground">{entry.contributes}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-muted-foreground mt-4 text-xs">
+              Build order is in{' '}
+              <Link href="/" className="underline underline-offset-4">
+                the project roadmap
+              </Link>
+              .
             </p>
           </CardContent>
         </Card>
-      </div>
+      ) : null}
+    </div>
+  )
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="grid grid-cols-12 gap-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <CardSkeleton key={index} className="col-span-12 sm:col-span-6 lg:col-span-3" />
+      ))}
     </div>
   )
 }

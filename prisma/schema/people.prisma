@@ -1,0 +1,159 @@
+// NEXUS OS — people, teams and departments (docs/DATA-MODEL.md §E.1.3).
+//
+// `EmployeeProfile` is separated from `Membership` deliberately: it holds pay
+// rates and employment details, which carry a stricter permission
+// (`people.profile.read.sensitive`) than ordinary member visibility. Keeping
+// them in their own table means a careless `select` on Membership cannot leak
+// someone's cost rate.
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+  INTERN
+}
+
+enum TeamRole {
+  LEAD
+  MEMBER
+}
+
+model Department {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name        String
+  description String?
+
+  /// Self-referencing tree; a department may sit under another.
+  parentId String?
+
+  headMembershipId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Department?  @relation("DepartmentTree", fields: [parentId], references: [id], onDelete: SetNull)
+  head         Membership?  @relation("DepartmentHead", fields: [headMembershipId], references: [id], onDelete: SetNull)
+
+  children Department[] @relation("DepartmentTree")
+  teams    Team[]
+  profiles EmployeeProfile[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, parentId])
+}
+
+model Team {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name        String
+  slug        String
+  description String?
+
+  departmentId     String?
+  leadMembershipId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  lead         Membership?  @relation("TeamLead", fields: [leadMembershipId], references: [id], onDelete: SetNull)
+
+  members TeamMember[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, departmentId])
+}
+
+model TeamMember {
+  id             String @id @default(cuid())
+  organizationId String
+  teamId         String
+  membershipId   String
+
+  role TeamRole @default(MEMBER)
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  team         Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, membershipId])
+  @@index([organizationId, membershipId])
+}
+
+/// HR detail for one membership. Separated so the sensitive fields can be
+/// permission-gated independently of ordinary member visibility.
+model EmployeeProfile {
+  id             String @id @default(cuid())
+  organizationId String
+  membershipId   String @unique
+
+  position       String?
+  employmentType EmploymentType @default(FULL_TIME)
+  departmentId   String?
+
+  hireDate DateTime?
+  location String?
+
+  /// Weekly capacity, used to turn assigned work into a utilisation figure.
+  weeklyCapacityMinutes Int @default(2400)
+
+  /// Sensitive: gated behind people.profile.read.sensitive. Minor units.
+  costRateMinor BigInt?
+  billRateMinor BigInt?
+  currency      String? @db.Char(3)
+
+  managerMembershipId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  department   Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  manager      Membership?  @relation("EmployeeManager", fields: [managerMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, departmentId])
+  @@index([organizationId, managerMembershipId])
+}
+
+model Skill {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name     String
+  category String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberships  MembershipSkill[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, category])
+}
+
+model MembershipSkill {
+  id             String @id @default(cuid())
+  organizationId String
+  membershipId   String
+  skillId        String
+
+  /// 1–5, self-assessed or set by a manager.
+  level Int @default(3)
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  skill        Skill        @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, skillId])
+  @@index([organizationId, skillId])
+}

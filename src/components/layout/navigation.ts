@@ -32,6 +32,12 @@ export const NAVIGATION: NavDefinition[] = [
     requires: ['task.read'],
   },
   {
+    href: '/people',
+    label: 'People',
+    icon: 'people',
+    requires: ['people.read'],
+  },
+  {
     href: '/crm',
     label: 'CRM',
     icon: 'crm',

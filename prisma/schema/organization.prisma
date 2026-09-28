@@ -80,6 +80,13 @@ model Organization {
   taskComments     TaskComment[]
   commentMentions  CommentMention[]
 
+  departments      Department[]
+  teams            Team[]
+  teamMembers      TeamMember[]
+  employeeProfiles EmployeeProfile[]
+  skills           Skill[]
+  membershipSkills MembershipSkill[]
+
   @@index([status])
   @@index([createdById])
 }
@@ -120,6 +127,12 @@ model Membership {
   tasksAssigned   Task[]           @relation("TaskAssignee")
   commentsWritten TaskComment[]    @relation("CommentAuthor")
   mentions        CommentMention[] @relation("MentionedMember")
+  teamMemberships TeamMember[]
+  teamsLed        Team[]            @relation("TeamLead")
+  departmentsLed  Department[]      @relation("DepartmentHead")
+  employeeProfile EmployeeProfile?
+  directReports   EmployeeProfile[] @relation("EmployeeManager")
+  skills          MembershipSkill[]
 
   /// One membership per user per organization — the constraint the whole
   /// multi-org model rests on.

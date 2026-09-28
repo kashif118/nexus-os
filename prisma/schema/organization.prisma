@@ -1,0 +1,115 @@
+// NEXUS OS — organizations and membership (docs/DATA-MODEL.md §E.1.1).
+//
+// `Organization` is the tenant root. Every business record added from this phase
+// onward carries a non-nullable `organizationId` and is filtered by the
+// org-scoped Prisma client in src/lib/db.ts (docs/PLATFORM.md §H.3).
+//
+// `Membership` is the join that makes multi-org work: one global `User` may be
+// an active member of many organizations, with entirely separate data in each.
+//
+// Roles attach to `Membership` in the RBAC phase. Until then, organization
+// management is restricted to the creator, recorded on `Organization.createdById`.
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+model Organization {
+  id String @id @default(cuid())
+
+  /// URL identity: every tenant screen lives under /{slug}/… (docs/PLATFORM.md §H.2).
+  slug String @unique
+
+  name        String
+  description String?
+  logoUrl     String?
+  industry    String?
+
+  /// Defaults for formatting and reporting across the tenant.
+  timezone String @default("UTC")
+  currency String @default("USD") @db.Char(3)
+  country  String?
+
+  /// Free-form preferences validated by a Zod schema in code, with a
+  /// schemaVersion field (docs/DATA-MODEL.md §E.0).
+  settings Json?
+
+  status OrganizationStatus @default(ACTIVE)
+
+  createdById String?
+  createdBy   User?   @relation("OrganizationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  memberships Membership[]
+  invitations Invitation[]
+
+  @@index([status])
+  @@index([createdById])
+}
+
+
+/// A user's participation in one organization. Deliberately a first-class
+/// entity rather than a join column: it carries status, roles and the
+/// org-specific profile, and is what every org-scoped record points at.
+model Membership {
+  id             String @id @default(cuid())
+  organizationId String
+  userId         String
+
+  status MembershipStatus @default(ACTIVE)
+
+  /// Job title inside this organization, independent of the global user.
+  title String?
+
+  invitedById String?
+  joinedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("MembershipInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  /// One membership per user per organization — the constraint the whole
+  /// multi-org model rests on.
+  @@unique([organizationId, userId])
+  @@index([organizationId, status])
+  @@index([userId, status])
+}
+
+/// A pending invitation to join an organization. Bound to (organizationId,
+/// email) and redeemable once.
+model Invitation {
+  id             String @id @default(cuid())
+  organizationId String
+
+  email     String
+  tokenHash String @unique
+
+  invitedById String?
+
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  revokedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User?        @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, email])
+  @@index([email])
+  @@index([expiresAt])
+}

@@ -58,6 +58,11 @@ model User {
   loginEvents LoginEvent[]
   auditLogs   AuditLog[]
 
+  memberships           Membership[]
+  organizationsCreated  Organization[] @relation("OrganizationCreator")
+  membershipsInvited    Membership[]   @relation("MembershipInviter")
+  invitationsSent       Invitation[]   @relation("InvitationInviter")
+
   @@index([status])
 }
 

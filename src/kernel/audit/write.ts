@@ -24,6 +24,14 @@ export type AuditAction =
   | 'auth.password_changed'
   | 'auth.session_revoked'
   | 'auth.sessions_revoked_all'
+  | 'organization.created'
+  | 'organization.updated'
+  | 'organization.member_invited'
+  | 'organization.invitation_revoked'
+  | 'organization.member_joined'
+  | 'organization.member_suspended'
+  | 'organization.member_reinstated'
+  | 'organization.member_removed'
 
 export interface AuditInput {
   action: AuditAction

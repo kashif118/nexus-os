@@ -13,6 +13,8 @@ import {
   revokeSession,
 } from '@/kernel/auth/session'
 import { toActionResult, type ActionResult } from '@/kernel/errors'
+import { readLastOrg } from '@/kernel/tenancy/last-org'
+import { resolveLandingPath } from '@/modules/organizations/service'
 
 import {
   requestPasswordResetSchema,
@@ -89,7 +91,8 @@ export async function signUpAction(_previous: FormState, formData: FormData): Pr
     return toActionResult(error)
   }
 
-  redirect('/account')
+  // A brand-new account belongs to no organization yet.
+  redirect('/organizations/new')
 }
 
 export async function signInAction(_previous: FormState, formData: FormData): Promise<FormState> {
@@ -97,8 +100,8 @@ export async function signInAction(_previous: FormState, formData: FormData): Pr
   if (!parsed.ok) return parsed.result
 
   const meta = await getRequestContext()
-  const destination = safeRedirectPath(parsed.data.next)
 
+  let destination: string
   try {
     const { userId } = await service.authenticate(
       { email: parsed.data.email, password: parsed.data.password },
@@ -107,6 +110,12 @@ export async function signInAction(_previous: FormState, formData: FormData): Pr
     // A new session on every sign-in — no fixation carried over from a
     // pre-authentication cookie.
     await createSession(userId, meta)
+
+    // An explicit destination wins; otherwise land in an organization rather
+    // than a bare account page.
+    destination = parsed.data.next
+      ? safeRedirectPath(parsed.data.next)
+      : await resolveLandingPath(userId, await readLastOrg())
   } catch (error) {
     return toActionResult(error)
   }

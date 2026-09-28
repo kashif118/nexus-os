@@ -24,15 +24,24 @@ import { NextResponse, type NextRequest } from 'next/server'
 // edge bundle cannot import a module that pulls in the database client.
 const SESSION_COOKIE_NAMES = ['__Host-nexus_session', 'nexus_session'] as const
 
-const PROTECTED_PREFIXES = ['/account'] as const
+/**
+ * Routes reachable while signed out. Everything else — including every
+ * /{orgSlug}/... path, whose slugs cannot be enumerated here — is treated as
+ * protected and redirected early.
+ */
+const PUBLIC_PATHS = new Set([
+  '/',
+  '/sign-in',
+  '/sign-up',
+  '/forgot-password',
+  '/reset-password',
+  '/verify-email',
+])
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  const isProtected = PROTECTED_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  )
-  if (!isProtected) return NextResponse.next()
+  if (PUBLIC_PATHS.has(pathname)) return NextResponse.next()
 
   const hasSessionCookie = SESSION_COOKIE_NAMES.some((name) => request.cookies.get(name)?.value)
   if (hasSessionCookie) return NextResponse.next()

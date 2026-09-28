@@ -1,0 +1,204 @@
+// NEXUS OS — tasks (docs/DATA-MODEL.md §E.1.5).
+//
+// Tasks are the highest-volume table in the product, so the indexes here matter
+// more than anywhere else: every one is organization-first, and the board query
+// is served by a single compound index.
+
+enum TaskStatus {
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  REVIEW
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+/// How one task constrains another. FINISH_START is the common case: B cannot
+/// start until A is done.
+enum DependencyType {
+  FINISH_START
+  START_START
+  FINISH_FINISH
+}
+
+model Task {
+  id             String @id @default(cuid())
+  organizationId String
+
+  projectId    String?
+  milestoneId  String?
+  parentTaskId String?
+
+  /// Sequential within the organization, shown as NEX-142 alongside the project
+  /// key. Allocated from a counter row so concurrent creates cannot collide.
+  number Int
+
+  title       String
+  description String?
+
+  status   TaskStatus   @default(BACKLOG)
+  priority TaskPriority @default(MEDIUM)
+
+  assigneeMembershipId String?
+  createdById          String?
+
+  startDate DateTime?
+  dueDate   DateTime?
+
+  estimateMinutes Int?
+  spentMinutes    Int @default(0)
+
+  /// Fractional rank for board ordering. A drag moves ONE row: the new rank is
+  /// the midpoint between its neighbours, so reordering never rewrites the column.
+  boardOrder Decimal @default(0) @db.Decimal(20, 10)
+
+  completedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestone    Milestone?   @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  parentTask   Task?        @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  assignee     Membership?  @relation("TaskAssignee", fields: [assigneeMembershipId], references: [id], onDelete: SetNull)
+
+  subtasks     Task[]              @relation("TaskSubtasks")
+  dependencies TaskDependency[]    @relation("DependentTask")
+  dependents   TaskDependency[]    @relation("BlockingTask")
+  checklist    TaskChecklistItem[]
+  labels       TaskLabel[]
+  comments     TaskComment[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, projectId, status, boardOrder])
+  @@index([organizationId, assigneeMembershipId, status, dueDate])
+  @@index([organizationId, status, dueDate])
+  @@index([organizationId, parentTaskId])
+  @@index([organizationId, milestoneId])
+}
+
+/// Per-organization sequence for task numbers. A separate row rather than a
+/// database sequence so each tenant numbers from 1 independently.
+model TaskCounter {
+  organizationId String @id
+  nextNumber     Int    @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+/// "taskId cannot proceed until dependsOnTaskId is satisfied."
+/// Cycles are rejected by a depth-first check in the service.
+model TaskDependency {
+  id             String @id @default(cuid())
+  organizationId String
+
+  taskId          String
+  dependsOnTaskId String
+
+  type DependencyType @default(FINISH_START)
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation("DependentTask", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn    Task         @relation("BlockingTask", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId])
+  @@index([organizationId, dependsOnTaskId])
+}
+
+model TaskChecklistItem {
+  id             String @id @default(cuid())
+  organizationId String
+  taskId         String
+
+  content  String
+  done     Boolean @default(false)
+  position Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, taskId, position])
+}
+
+model Label {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name  String
+  color String @default("neutral")
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tasks        TaskLabel[]
+
+  @@unique([organizationId, name])
+}
+
+model TaskLabel {
+  id             String @id @default(cuid())
+  organizationId String
+  taskId         String
+  labelId        String
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label        Label        @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, labelId])
+  @@index([organizationId, labelId])
+}
+
+/// Comments live on the task rather than in a polymorphic table because task
+/// discussion is by far the highest volume and deserves its own index.
+model TaskComment {
+  id             String @id @default(cuid())
+  organizationId String
+  taskId         String
+
+  authorMembershipId String?
+  body               String
+
+  editedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author       Membership?  @relation("CommentAuthor", fields: [authorMembershipId], references: [id], onDelete: SetNull)
+
+  mentions CommentMention[]
+
+  @@index([organizationId, taskId, createdAt])
+}
+
+/// A mention drives a notification when that module lands; recorded now so the
+/// data exists from the first comment rather than only from the day it ships.
+model CommentMention {
+  id             String @id @default(cuid())
+  organizationId String
+
+  commentId             String
+  mentionedMembershipId String
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  comment      TaskComment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  mentioned    Membership   @relation("MentionedMember", fields: [mentionedMembershipId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, mentionedMembershipId])
+  @@index([organizationId, mentionedMembershipId])
+}

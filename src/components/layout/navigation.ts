@@ -26,6 +26,12 @@ export const NAVIGATION: NavDefinition[] = [
     requires: ['project.read.any', 'project.read.member'],
   },
   {
+    href: '/tasks',
+    label: 'Tasks',
+    icon: 'tasks',
+    requires: ['task.read'],
+  },
+  {
     href: '/crm',
     label: 'CRM',
     icon: 'crm',

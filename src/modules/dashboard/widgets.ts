@@ -62,6 +62,7 @@ export async function loadWidgets(): Promise<void> {
   const moduleLoaders: Array<() => Promise<unknown>> = [
     () => import('../crm/widgets'),
     () => import('../projects/widgets'),
+    () => import('../tasks/widgets'),
   ]
 
   await Promise.all(
@@ -80,6 +81,5 @@ export async function loadWidgets(): Promise<void> {
  * of pretending to have it. Removed as each phase lands.
  */
 export const PENDING_MODULES = [
-  { module: 'Tasks', contributes: 'task completion, overdue work, team workload' },
   { module: 'Finance', contributes: 'revenue, expenses, invoice status, cash flow' },
 ] as const

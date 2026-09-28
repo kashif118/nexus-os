@@ -1,0 +1,40 @@
+'use client'
+
+import * as AvatarPrimitive from '@radix-ui/react-avatar'
+import type { ComponentProps } from 'react'
+
+import { cn } from '@/lib/utils'
+
+export function Avatar({ className, ...props }: ComponentProps<typeof AvatarPrimitive.Root>) {
+  return (
+    <AvatarPrimitive.Root
+      className={cn('relative flex size-8 shrink-0 overflow-hidden rounded-full', className)}
+      {...props}
+    />
+  )
+}
+
+export function AvatarImage({ className, ...props }: ComponentProps<typeof AvatarPrimitive.Image>) {
+  return <AvatarPrimitive.Image className={cn('aspect-square size-full', className)} {...props} />
+}
+
+export function AvatarFallback({
+  className,
+  ...props
+}: ComponentProps<typeof AvatarPrimitive.Fallback>) {
+  return (
+    <AvatarPrimitive.Fallback
+      className={cn(
+        'bg-secondary text-secondary-foreground flex size-full items-center justify-center rounded-full text-xs font-medium',
+        className,
+      )}
+      {...props}
+    />
+  )
+}
+
+/** Initials from a display name, for avatars with no image. */
+export function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).slice(0, 2)
+  return parts.map((part) => part.charAt(0).toUpperCase()).join('') || '?'
+}

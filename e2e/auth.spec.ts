@@ -14,13 +14,21 @@ function uniqueEmail(label: string): string {
   return `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`
 }
 
+/**
+ * Register, then land on the account page.
+ *
+ * A brand-new account belongs to no organization, so sign-up sends the user to
+ * organization creation (Phase 03). These tests are about identity rather than
+ * tenancy, so they step straight to /account afterwards.
+ */
 async function signUp(page: Page, email: string, name = 'Ada Lovelace') {
   await page.goto('/sign-up')
   await page.getByLabel('Name').fill(name)
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(PASSWORD)
   await page.getByRole('button', { name: 'Create account' }).click()
-  await page.waitForURL('**/account')
+  await page.waitForURL('**/organizations/new')
+  await page.goto('/account')
 }
 
 async function signIn(page: Page, email: string, password = PASSWORD) {
@@ -90,7 +98,10 @@ test.describe('sign in and sign out', () => {
     await context.clearCookies()
 
     await signIn(page, email)
-    await page.waitForURL('**/account')
+    // With no organization yet, sign-in lands on onboarding.
+    await page.waitForURL('**/organizations/new')
+
+    await page.goto('/account')
     await expect(page.getByText(email).first()).toBeVisible()
   })
 
@@ -154,6 +165,8 @@ test.describe('protected routes', () => {
     await page.getByLabel('Email').fill(email)
     await page.getByLabel('Password').fill(PASSWORD)
     await page.getByRole('button', { name: 'Sign in' }).click()
+
+    // The explicit destination wins over the default landing page.
     await page.waitForURL('**/account')
   })
 
@@ -176,6 +189,7 @@ test.describe('protected routes', () => {
   test('sends an authenticated visitor away from the sign-in page', async ({ page }) => {
     await signUp(page, uniqueEmail('guest'))
     await page.goto('/sign-in')
+    // requireGuest sends an authenticated visitor away from the auth screens.
     await expect(page).toHaveURL(/account/)
   })
 })
@@ -199,7 +213,8 @@ test.describe('session management', () => {
     const second = await browser.newContext()
     const secondPage = await second.newPage()
     await signIn(secondPage, email)
-    await secondPage.waitForURL('**/account')
+    await secondPage.waitForURL('**/organizations/new')
+    await secondPage.goto('/account')
 
     // The first device sees two sessions and terminates the other one.
     await firstPage.reload()

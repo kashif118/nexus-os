@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { requireCtxPage } from '@/kernel/tenancy/ctx'
 import { listMyOrganizations } from '@/modules/organizations/queries'
 import { AppShell } from '@/components/layout/app-shell'
+import { commandsFor, navigationFor } from '@/components/layout/navigation'
 
 /**
  * The tenant guard (docs/PLATFORM.md §H.3, layer 1).
@@ -30,6 +31,8 @@ export default async function OrgLayout({
       org={{ slug: ctx.org.slug, name: ctx.org.name, logoUrl: ctx.org.logoUrl }}
       user={{ name: ctx.user.name, email: ctx.user.email }}
       organizations={organizations}
+      navigation={navigationFor(ctx.can)}
+      commands={commandsFor(ctx.orgSlug, ctx.can)}
     >
       {children}
     </AppShell>

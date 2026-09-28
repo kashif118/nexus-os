@@ -30,7 +30,7 @@ export default async function SignInPage({
         </>
       }
     >
-      <SignInForm next={safeNext === '/account' ? undefined : safeNext} />
+      <SignInForm next={safeNext} />
     </AuthCard>
   )
 }

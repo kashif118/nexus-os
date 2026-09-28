@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import type { ReactNode } from 'react'
 
+import { Toaster } from '@/components/feedback/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
 import { clientEnv } from '@/kernel/config/env'
 import '@/styles/globals.css'
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           disableTransitionOnChange
         >
           {children}
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

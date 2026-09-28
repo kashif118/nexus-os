@@ -1,28 +1,35 @@
 import type { ReactNode } from 'react'
 
+import { CommandPalette, type PaletteCommand } from '@/components/layout/command-palette'
+import { MobileNav } from '@/components/layout/mobile-nav'
 import { OrgSwitcher, type OrgSummary } from '@/components/layout/org-switcher'
-import { SidebarNav } from '@/components/layout/sidebar-nav'
+import { SidebarNav, type NavItem } from '@/components/layout/sidebar-nav'
 import { UserMenu } from '@/components/layout/user-menu'
 
 /**
  * The authenticated application frame.
  *
  * Takes plain, serialisable props rather than a `Ctx`: the context object holds
- * a live Prisma client, which must never be handed to a client component.
+ * a live Prisma client and a permission set, neither of which may cross to the
+ * client.
  *
- * Phase 05 expands this with the command palette, breadcrumbs and notification
- * surface. The structure — fixed sidebar, sticky header, scrollable content —
- * is fixed here so every module page inherits the same skeleton.
+ * Navigation is PASSED IN, already filtered by the caller against the actor
+ * permissions, so the sidebar can never advertise a page that would 404. The
+ * shell itself makes no authorization decisions.
  */
 export function AppShell({
   org,
   user,
   organizations,
+  navigation,
+  commands,
   children,
 }: {
   org: { slug: string; name: string; logoUrl: string | null }
   user: { name: string; email: string }
   organizations: OrgSummary[]
+  navigation: NavItem[]
+  commands: PaletteCommand[]
   children: ReactNode
 }) {
   return (
@@ -31,15 +38,26 @@ export function AppShell({
         <div className="border-b p-3">
           <OrgSwitcher current={org} organizations={organizations} />
         </div>
-        <SidebarNav orgSlug={org.slug} />
+        <SidebarNav orgSlug={org.slug} items={navigation} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="bg-background/80 sticky top-0 z-30 flex h-14 items-center justify-between gap-4 border-b px-4 backdrop-blur md:px-6">
+        <header className="bg-background/80 sticky top-0 z-30 flex h-14 items-center gap-3 border-b px-4 backdrop-blur md:px-6">
           <div className="md:hidden">
-            <OrgSwitcher current={org} organizations={organizations} />
+            <MobileNav
+              orgSlug={org.slug}
+              items={navigation}
+              org={org}
+              organizations={organizations}
+            />
           </div>
+
           <div className="ml-auto flex items-center gap-2">
+            <CommandPalette
+              commands={commands}
+              organizations={organizations}
+              currentSlug={org.slug}
+            />
             <UserMenu user={user} />
           </div>
         </header>

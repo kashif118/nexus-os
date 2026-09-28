@@ -23,9 +23,12 @@ test.describe('foundation', () => {
     expect(response?.headers()['x-frame-options']).toBe('DENY')
   })
 
-  test('returns a 404 page for an unknown route', async ({ page }) => {
-    const response = await page.goto('/this-route-does-not-exist')
-    expect(response?.status()).toBe(404)
-    await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible()
+  test('sends an anonymous visitor on an unknown route to sign-in', async ({ page }) => {
+    // Since Phase 03 every path outside the public list is treated as
+    // protected: organization slugs cannot be enumerated in the edge proxy, so
+    // an unknown path is assumed to be a tenant route. The 404 behaviour for a
+    // signed-in non-member is covered in tenancy.spec.ts.
+    await page.goto('/this-route-does-not-exist')
+    await expect(page).toHaveURL(/sign-in/)
   })
 })

@@ -1,0 +1,150 @@
+// NEXUS OS — projects and milestones (docs/DATA-MODEL.md §E.1.5).
+//
+// A project is the hub of the entity graph: it links a client (Company) to the
+// people doing the work, the tasks, the documents and eventually the money. The
+// value of the product is those joins, so the foreign keys here matter more than
+// the columns.
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  AT_RISK
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum ProjectPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ProjectVisibility {
+  ORGANIZATION
+  TEAM
+  PRIVATE
+}
+
+enum ProjectRole {
+  LEAD
+  CONTRIBUTOR
+  VIEWER
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  MISSED
+}
+
+/// Derived health, recomputed rather than edited by hand so it cannot drift from
+/// what the underlying data says.
+enum HealthStatus {
+  HEALTHY
+  AT_RISK
+  CRITICAL
+}
+
+model Project {
+  id             String @id @default(cuid())
+  organizationId String
+
+  /// Short human key, e.g. NEX. Used in task numbers and search.
+  key  String
+  name String
+
+  description String?
+
+  companyId String?
+
+  /// The member accountable for delivery.
+  managerMembershipId String?
+
+  status     ProjectStatus     @default(PLANNING)
+  priority   ProjectPriority   @default(MEDIUM)
+  visibility ProjectVisibility @default(ORGANIZATION)
+
+  startDate   DateTime?
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  /// Minor units plus currency, like every other amount in the system.
+  budgetMinor BigInt?
+  currency    String  @db.Char(3)
+
+  /// 0–100, derived from completed tasks once the task module exists.
+  progressPercent Int @default(0)
+
+  /// Health is computed from the metrics in modules/projects/health.ts and
+  /// cached here so list screens do not recompute it per row.
+  healthScore     Int          @default(100)
+  healthStatus    HealthStatus @default(HEALTHY)
+  healthComputedAt DateTime?
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  manager      Membership?  @relation("ProjectManager", fields: [managerMembershipId], references: [id], onDelete: SetNull)
+
+  members    ProjectMember[]
+  milestones Milestone[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId, status, dueDate])
+  @@index([organizationId, companyId])
+  @@index([organizationId, managerMembershipId])
+  @@index([organizationId, healthStatus])
+}
+
+model ProjectMember {
+  id             String @id @default(cuid())
+  organizationId String
+  projectId      String
+  membershipId   String
+
+  role ProjectRole @default(CONTRIBUTOR)
+
+  /// Percentage of this person capacity committed to the project.
+  allocationPercent Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, membershipId])
+  @@index([organizationId, membershipId])
+  @@index([organizationId, projectId])
+}
+
+model Milestone {
+  id             String @id @default(cuid())
+  organizationId String
+  projectId      String
+
+  name        String
+  description String?
+
+  dueDate     DateTime?
+  status      MilestoneStatus @default(PENDING)
+  completedAt DateTime?
+
+  position Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, projectId, position])
+  @@index([organizationId, dueDate])
+}

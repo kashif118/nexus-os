@@ -59,7 +59,10 @@ export async function loadWidgets(): Promise<void> {
   // Module widget files are added here by the phase that builds them.
   // Each import is wrapped so a module that fails to load degrades the
   // dashboard rather than breaking the page.
-  const moduleLoaders: Array<() => Promise<unknown>> = [() => import('../crm/widgets')]
+  const moduleLoaders: Array<() => Promise<unknown>> = [
+    () => import('../crm/widgets'),
+    () => import('../projects/widgets'),
+  ]
 
   await Promise.all(
     moduleLoaders.map(async (load) => {
@@ -77,7 +80,6 @@ export async function loadWidgets(): Promise<void> {
  * of pretending to have it. Removed as each phase lands.
  */
 export const PENDING_MODULES = [
-  { module: 'Projects', contributes: 'active projects, project health, upcoming deadlines' },
   { module: 'Tasks', contributes: 'task completion, overdue work, team workload' },
   { module: 'Finance', contributes: 'revenue, expenses, invoice status, cash flow' },
 ] as const

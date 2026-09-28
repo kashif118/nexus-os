@@ -20,6 +20,12 @@ export interface NavDefinition extends NavItem {
 export const NAVIGATION: NavDefinition[] = [
   { href: '', label: 'Command Center', icon: 'dashboard' },
   {
+    href: '/projects',
+    label: 'Projects',
+    icon: 'projects',
+    requires: ['project.read.any', 'project.read.member'],
+  },
+  {
     href: '/crm',
     label: 'CRM',
     icon: 'crm',

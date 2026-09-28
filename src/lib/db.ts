@@ -80,6 +80,11 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set<string>([
   'Activity',
   'Tag',
   'EntityTag',
+
+  // Projects
+  'Project',
+  'ProjectMember',
+  'Milestone',
 ])
 
 /** Prisma delegate property name (`membership`) for a model name (`Membership`). */

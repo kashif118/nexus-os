@@ -67,6 +67,10 @@ model Organization {
   tags             Tag[]
   entityTags       EntityTag[]
 
+  projects         Project[]
+  projectMembers   ProjectMember[]
+  milestones       Milestone[]
+
   @@index([status])
   @@index([createdById])
 }
@@ -102,6 +106,8 @@ model Membership {
   leadsOwned      Lead[]     @relation("LeadOwner")
   dealsOwned      Deal[]     @relation("DealOwner")
   activitiesOwned Activity[] @relation("ActivityOwner")
+  projectsManaged Project[]  @relation("ProjectManager")
+  projectMembers  ProjectMember[]
 
   /// One membership per user per organization — the constraint the whole
   /// multi-org model rests on.

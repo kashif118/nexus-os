@@ -1,6 +1,6 @@
 'use client'
 
-import { Building2, LayoutDashboard, Settings, Users } from 'lucide-react'
+import { Building2, LayoutDashboard, Settings, ShieldCheck, Users } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 const NAV = [
   { href: '', label: 'Command Center', Icon: LayoutDashboard },
   { href: '/settings/members', label: 'Members', Icon: Users },
+  { href: '/settings/roles', label: 'Roles', Icon: ShieldCheck },
   { href: '/settings', label: 'Settings', Icon: Settings },
 ] as const
 

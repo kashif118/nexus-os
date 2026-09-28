@@ -1,5 +1,6 @@
 import type { Ctx } from '@/kernel/tenancy/ctx'
 
+import * as rolesService from './roles-service'
 import * as service from './service'
 
 /**
@@ -25,4 +26,16 @@ export async function listMyOrganizations(userId: string) {
 
 export async function previewInvitation(token: string, userEmail: string) {
   return service.previewInvitation(token, userEmail)
+}
+
+export async function listAssignableRoles(ctx: Ctx) {
+  return rolesService.listAssignableRoles(ctx)
+}
+
+export async function listMembershipRoles(ctx: Ctx) {
+  return rolesService.listMembershipRoles(ctx)
+}
+
+export async function getRolePermissions(ctx: Ctx, roleId: string) {
+  return rolesService.getRolePermissions(ctx, roleId)
 }

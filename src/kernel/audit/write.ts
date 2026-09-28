@@ -32,6 +32,8 @@ export type AuditAction =
   | 'organization.member_suspended'
   | 'organization.member_reinstated'
   | 'organization.member_removed'
+  | 'organization.role_assigned'
+  | 'organization.role_unassigned'
 
 export interface AuditInput {
   action: AuditAction

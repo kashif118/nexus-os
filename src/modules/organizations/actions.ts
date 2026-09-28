@@ -16,6 +16,7 @@ import {
   membershipIdSchema,
   updateOrganizationSchema,
 } from './schema'
+import * as rolesService from './roles-service'
 import * as service from './service'
 
 /**
@@ -215,4 +216,58 @@ export async function switchOrganizationAction(slug: string): Promise<never> {
   await requireCtx(slug)
   await rememberLastOrg(slug)
   redirect(`/${slug}`)
+}
+
+const roleAssignmentSchema = {
+  safeParse(value: unknown) {
+    const raw = value as Record<string, unknown>
+    const membershipId = typeof raw.membershipId === 'string' ? raw.membershipId.trim() : ''
+    const roleId = typeof raw.roleId === 'string' ? raw.roleId.trim() : ''
+
+    if (!membershipId || !roleId || membershipId.length > 64 || roleId.length > 64) {
+      return {
+        success: false,
+        error: { issues: [{ path: ['form'], message: 'Choose a member and a role.' }] },
+      }
+    }
+    return { success: true, data: { membershipId, roleId } }
+  },
+}
+
+export async function assignRoleAction(
+  orgSlug: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = parseFormData(roleAssignmentSchema, formData)
+  if (!parsed.ok) return parsed.result
+
+  try {
+    const ctx = await requireCtx(orgSlug)
+    const meta = await getRequestContext()
+    await rolesService.assignRole(ctx, parsed.data, meta)
+    revalidatePath(`/${orgSlug}/settings/members`)
+    return { ok: true, data: { message: 'Role assigned.' } }
+  } catch (error) {
+    return toActionResult(error)
+  }
+}
+
+export async function unassignRoleAction(
+  orgSlug: string,
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = parseFormData(roleAssignmentSchema, formData)
+  if (!parsed.ok) return parsed.result
+
+  try {
+    const ctx = await requireCtx(orgSlug)
+    const meta = await getRequestContext()
+    await rolesService.unassignRole(ctx, parsed.data, meta)
+    revalidatePath(`/${orgSlug}/settings/members`)
+    return { ok: true, data: { message: 'Role removed.' } }
+  } catch (error) {
+    return toActionResult(error)
+  }
 }

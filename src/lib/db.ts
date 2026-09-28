@@ -62,7 +62,12 @@ export function getSystemDb(): PrismaClient {
  * design, because account-level events such as sign-up belong to no
  * organization. It is scoped explicitly at its call sites instead.
  */
-export const TENANT_MODELS: ReadonlySet<string> = new Set<string>(['Membership', 'Invitation'])
+export const TENANT_MODELS: ReadonlySet<string> = new Set<string>([
+  'Membership',
+  'Invitation',
+  'MembershipRole',
+  'ResourcePolicy',
+])
 
 /** Prisma delegate property name (`membership`) for a model name (`Membership`). */
 const delegateName = (model: string) => model.charAt(0).toLowerCase() + model.slice(1)

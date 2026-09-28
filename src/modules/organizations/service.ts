@@ -1,10 +1,11 @@
 import { writeAuditLog } from '@/kernel/audit/write'
 import { daysFromNow, generateToken, hashToken, isExpired } from '@/kernel/auth/tokens'
 import { conflict, forbidden, notFound, validationError } from '@/kernel/errors'
-import { requireOwner, type Ctx } from '@/kernel/tenancy/ctx'
+import type { Ctx } from '@/kernel/tenancy/ctx'
 import { absoluteUrl, getMailer } from '@/lib/email/mailer'
 
 import * as repository from './repository'
+import * as rolesRepository from './roles-repository'
 
 /**
  * Organization business rules.
@@ -73,6 +74,15 @@ export async function createOrganization(
     throw error
   }
 
+  // The creator becomes Owner immediately: an organization must never exist
+  // without someone able to administer it.
+  await rolesRepository.assignSystemRoleDirect({
+    organizationId: created.organization.id,
+    membershipId: created.membershipId,
+    roleKey: 'owner',
+    assignedById: actor.userId,
+  })
+
   await writeAuditLog({
     action: 'organization.created',
     entityType: 'Organization',
@@ -105,7 +115,7 @@ export async function updateOrganization(
   },
   meta: RequestMeta,
 ): Promise<void> {
-  requireOwner(ctx)
+  ctx.require('organization.update')
 
   await repository.updateOrganization(ctx, {
     name: input.name,
@@ -142,7 +152,7 @@ export async function inviteMember(
   input: { email: string; title?: string | undefined },
   meta: RequestMeta,
 ): Promise<void> {
-  requireOwner(ctx)
+  ctx.require('organization.members.invite')
 
   // Scoped to this organization, so a member of another tenant is invisible.
   const members = await repository.listMembers(ctx)
@@ -190,7 +200,7 @@ export async function revokeInvitation(
   invitationId: string,
   meta: RequestMeta,
 ): Promise<void> {
-  requireOwner(ctx)
+  ctx.require('organization.members.invite')
 
   const revoked = await repository.revokeInvitation(ctx, invitationId)
   if (revoked === 0) throw notFound('That invitation is no longer pending.')
@@ -254,6 +264,17 @@ export async function acceptInvitation(
 
   if (!result.accepted) throw validationError('That invitation has already been used.')
 
+  // New members start as Employee — the least-privilege default. An
+  // administrator grants more from the members screen.
+  if (result.membershipId) {
+    await rolesRepository.assignSystemRoleDirect({
+      organizationId: invitation.organizationId,
+      membershipId: result.membershipId,
+      roleKey: 'employee',
+      assignedById: null,
+    })
+  }
+
   await writeAuditLog({
     action: 'organization.member_joined',
     entityType: 'Membership',
@@ -273,7 +294,7 @@ export async function setMemberStatus(
   status: 'ACTIVE' | 'SUSPENDED',
   meta: RequestMeta,
 ): Promise<void> {
-  requireOwner(ctx)
+  ctx.require('organization.members.remove')
   await assertNotSelf(ctx, membershipId, 'You cannot change your own membership.')
 
   const updated = await repository.setMembershipStatus(ctx, membershipId, status)
@@ -296,7 +317,7 @@ export async function removeMember(
   membershipId: string,
   meta: RequestMeta,
 ): Promise<void> {
-  requireOwner(ctx)
+  ctx.require('organization.members.remove')
   await assertNotSelf(ctx, membershipId, 'You cannot remove yourself from the organization.')
 
   const removed = await repository.removeMembership(ctx, membershipId)

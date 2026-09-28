@@ -170,7 +170,13 @@ export default tseslint.config(
 
   // Tooling, tests and config files sit outside the application layering.
   {
-    files: ['scripts/**/*.ts', 'e2e/**/*.ts', '**/*.config.{ts,mts,mjs}', '**/*.test.ts'],
+    files: [
+      'scripts/**/*.ts',
+      'prisma/**/*.ts',
+      'e2e/**/*.ts',
+      '**/*.config.{ts,mts,mjs}',
+      '**/*.test.ts',
+    ],
     rules: {
       'boundaries/dependencies': 'off',
       'no-restricted-properties': 'off',

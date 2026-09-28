@@ -50,8 +50,11 @@ model Organization {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  memberships Membership[]
-  invitations Invitation[]
+  memberships      Membership[]
+  invitations      Invitation[]
+  roles            Role[]
+  membershipRoles  MembershipRole[]
+  resourcePolicies ResourcePolicy[]
 
   @@index([status])
   @@index([createdById])
@@ -80,6 +83,8 @@ model Membership {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   invitedBy    User?        @relation("MembershipInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  roles MembershipRole[]
 
   /// One membership per user per organization — the constraint the whole
   /// multi-org model rests on.

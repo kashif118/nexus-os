@@ -1,0 +1,136 @@
+// NEXUS OS — roles, permissions and record-level policies (docs/PLATFORM.md §I).
+//
+// Three tiers:
+//   1. Permission     global catalogue, seeded from code
+//   2. Role           bundles permissions with ALLOW or DENY; system or custom
+//   3. ResourcePolicy record-level grants ("this team may edit this project")
+//
+// Roles attach to a Membership, so a user can hold different roles in different
+// organizations — which is the whole point of the multi-org model.
+
+enum PermissionEffect {
+  ALLOW
+  DENY
+}
+
+enum PolicySubjectType {
+  USER
+  ROLE
+  TEAM
+}
+
+enum PolicyAccess {
+  VIEW
+  EDIT
+  MANAGE
+}
+
+/// The global permission catalogue. Never tenant-scoped: the same key means the
+/// same thing everywhere, and the seed is derived from the TypeScript catalogue
+/// so the two cannot drift.
+model Permission {
+  id String @id @default(cuid())
+
+  /// Dotted key, e.g. "project.update.any".
+  key String @unique
+
+  /// Parsed from the key for grouping in the role editor.
+  module String
+  action String
+
+  description String
+
+  createdAt DateTime @default(now())
+
+  roles RolePermission[]
+
+  @@index([module])
+}
+
+/// A named bundle of permissions.
+///
+/// `organizationId` is NULL for the seven system role templates, which every
+/// organization shares and none may edit. A custom role is org-scoped.
+/// Deliberately excluded from TENANT_MODELS for that reason: its organizationId
+/// is nullable, so it is scoped explicitly at its call sites.
+model Role {
+  id             String  @id @default(cuid())
+  organizationId String?
+
+  key         String
+  name        String
+  description String
+
+  isSystem Boolean @default(false)
+
+  /// Higher wins when presenting a member primary role. Owner is highest.
+  priority Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  permissions RolePermission[]
+  memberships MembershipRole[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+}
+
+model RolePermission {
+  id           String           @id @default(cuid())
+  roleId       String
+  permissionId String
+  effect       PermissionEffect @default(ALLOW)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+}
+
+/// A member may hold several roles; their permissions union, with any DENY
+/// winning over every ALLOW.
+model MembershipRole {
+  id             String @id @default(cuid())
+  organizationId String
+  membershipId   String
+  roleId         String
+
+  assignedById String?
+  createdAt    DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, roleId])
+  @@index([organizationId, membershipId])
+  @@index([roleId])
+}
+
+/// Record-level grants, for cases a role cannot express: a specific team that
+/// may edit one project, a document shared with one person.
+model ResourcePolicy {
+  id             String @id @default(cuid())
+  organizationId String
+
+  subjectType PolicySubjectType
+  subjectId   String
+
+  resourceType String
+  resourceId   String
+
+  access PolicyAccess
+
+  grantedById String?
+  createdAt   DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, subjectType, subjectId, resourceType, resourceId])
+  @@index([organizationId, resourceType, resourceId])
+  @@index([organizationId, subjectType, subjectId])
+}

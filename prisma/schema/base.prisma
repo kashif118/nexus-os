@@ -1,0 +1,24 @@
+// NEXUS OS — Prisma schema root.
+//
+// The schema is split by domain across this folder (docs/PLATFORM.md §F).
+// Phase 01 establishes only the datasource and generator; identity and tenancy
+// models arrive in Phase 02, and each later phase adds its own file
+// (crm.prisma, projects.prisma, finance.prisma, ...).
+//
+// Conventions every model must follow are specified in docs/DATA-MODEL.md §E.0:
+//   - cuid primary keys
+//   - a non-nullable organizationId on every tenant-scoped model
+//   - org-first compound indexes and org-scoped unique constraints
+//   - money as integer minor units plus an ISO-4217 currency code
+//
+// Prisma 7 note: connection URLs live in prisma.config.ts (for the CLI) and are
+// supplied to PrismaClient through a driver adapter at runtime — they are no
+// longer permitted in this block.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

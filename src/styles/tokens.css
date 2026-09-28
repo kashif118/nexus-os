@@ -1,0 +1,107 @@
+/**
+ * NEXUS OS design tokens.
+ *
+ * Single source of truth for colour, radius, elevation and motion. Components
+ * never hardcode a hex value — they consume these variables through the Tailwind
+ * theme mapping in globals.css.
+ *
+ * Identity: a cool graphite base with a signal-cyan accent. The product is an
+ * instrument panel for a company, so the surface stays quiet and the accent is
+ * reserved for state and action — not decoration.
+ *
+ * Every token is defined on bare `:root` (light) and overridden for dark, so a
+ * value can never exist in only one theme.
+ */
+
+:root {
+  /* Surfaces */
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.21 0.015 258);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.015 258);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.015 258);
+
+  /* Brand + action */
+  --primary: oklch(0.55 0.14 232);
+  --primary-foreground: oklch(0.99 0.003 240);
+  --secondary: oklch(0.96 0.005 250);
+  --secondary-foreground: oklch(0.3 0.02 258);
+  --accent: oklch(0.95 0.02 232);
+  --accent-foreground: oklch(0.32 0.06 245);
+
+  /* Quiet text and chrome */
+  --muted: oklch(0.96 0.004 250);
+  --muted-foreground: oklch(0.52 0.015 256);
+  --border: oklch(0.92 0.005 255);
+  --input: oklch(0.92 0.005 255);
+  --ring: oklch(0.55 0.14 232);
+
+  /* Semantic state — used by health indicators, invoice status, run status */
+  --success: oklch(0.6 0.13 155);
+  --success-foreground: oklch(0.99 0.01 155);
+  --warning: oklch(0.72 0.15 75);
+  --warning-foreground: oklch(0.25 0.05 75);
+  --destructive: oklch(0.58 0.2 27);
+  --destructive-foreground: oklch(0.99 0.01 27);
+  --info: oklch(0.6 0.12 250);
+  --info-foreground: oklch(0.99 0.01 250);
+
+  /* Data visualisation — categorical ramp, stable ordering across charts */
+  --chart-1: oklch(0.55 0.14 232);
+  --chart-2: oklch(0.62 0.13 160);
+  --chart-3: oklch(0.68 0.15 75);
+  --chart-4: oklch(0.55 0.17 300);
+  --chart-5: oklch(0.6 0.18 20);
+  --chart-6: oklch(0.65 0.1 200);
+
+  /* Shape and depth */
+  --radius: 0.625rem;
+  --shadow-sm: 0 1px 2px 0 oklch(0.21 0.015 258 / 0.06);
+  --shadow-md:
+    0 2px 4px -1px oklch(0.21 0.015 258 / 0.07), 0 4px 12px -2px oklch(0.21 0.015 258 / 0.08);
+  --shadow-lg:
+    0 4px 8px -2px oklch(0.21 0.015 258 / 0.08), 0 12px 32px -4px oklch(0.21 0.015 258 / 0.12);
+}
+
+.dark {
+  --background: oklch(0.17 0.012 258);
+  --foreground: oklch(0.95 0.004 250);
+  --card: oklch(0.21 0.014 258);
+  --card-foreground: oklch(0.95 0.004 250);
+  --popover: oklch(0.21 0.014 258);
+  --popover-foreground: oklch(0.95 0.004 250);
+
+  --primary: oklch(0.7 0.13 225);
+  --primary-foreground: oklch(0.17 0.02 245);
+  --secondary: oklch(0.26 0.014 258);
+  --secondary-foreground: oklch(0.92 0.005 250);
+  --accent: oklch(0.29 0.03 235);
+  --accent-foreground: oklch(0.93 0.02 230);
+
+  --muted: oklch(0.26 0.014 258);
+  --muted-foreground: oklch(0.68 0.012 256);
+  --border: oklch(0.3 0.014 258);
+  --input: oklch(0.32 0.014 258);
+  --ring: oklch(0.7 0.13 225);
+
+  --success: oklch(0.68 0.13 155);
+  --success-foreground: oklch(0.16 0.03 155);
+  --warning: oklch(0.78 0.14 75);
+  --warning-foreground: oklch(0.18 0.04 75);
+  --destructive: oklch(0.65 0.18 25);
+  --destructive-foreground: oklch(0.16 0.03 25);
+  --info: oklch(0.68 0.11 250);
+  --info-foreground: oklch(0.16 0.03 250);
+
+  --chart-1: oklch(0.7 0.13 225);
+  --chart-2: oklch(0.72 0.12 160);
+  --chart-3: oklch(0.78 0.14 75);
+  --chart-4: oklch(0.68 0.15 300);
+  --chart-5: oklch(0.7 0.16 20);
+  --chart-6: oklch(0.74 0.09 200);
+
+  --shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.3);
+  --shadow-md: 0 2px 4px -1px oklch(0 0 0 / 0.35), 0 4px 12px -2px oklch(0 0 0 / 0.4);
+  --shadow-lg: 0 4px 8px -2px oklch(0 0 0 / 0.4), 0 12px 32px -4px oklch(0 0 0 / 0.5);
+}

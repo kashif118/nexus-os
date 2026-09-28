@@ -32,6 +32,12 @@ export const NAVIGATION: NavDefinition[] = [
     requires: ['task.read'],
   },
   {
+    href: '/finance',
+    label: 'Finance',
+    icon: 'finance',
+    requires: ['finance.invoice.read', 'finance.expense.read.own'],
+  },
+  {
     href: '/people',
     label: 'People',
     icon: 'people',

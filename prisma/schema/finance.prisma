@@ -1,0 +1,245 @@
+// NEXUS OS — finance (docs/DATA-MODEL.md §E.1.7).
+//
+// Every amount is an integer in MINOR units plus an ISO-4217 code. There is no
+// Float, Double or Decimal money column anywhere in this file: a rounding error
+// in an invoice is a real defect, not a cosmetic one.
+//
+// Invoice totals are DERIVED from line items by the service and stored for
+// query performance. The client may never send a total.
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CARD
+  CASH
+  CHEQUE
+  OTHER
+}
+
+enum ExpenseStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  REIMBURSED
+}
+
+enum BudgetScope {
+  ORGANIZATION
+  PROJECT
+  DEPARTMENT
+  CATEGORY
+}
+
+/// Per-organization document numbering. Claimed with an atomic increment so two
+/// concurrent invoices cannot take the same number — a duplicate invoice number
+/// is an accounting problem, not a UI glitch.
+model NumberSequence {
+  id             String @id @default(cuid())
+  organizationId String
+
+  /// INVOICE, EXPENSE, …
+  kind      String
+  prefix    String @default("INV-")
+  lastValue Int    @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind])
+}
+
+model Invoice {
+  id             String @id @default(cuid())
+  organizationId String
+
+  /// Human number, unique per organization.
+  number String
+
+  companyId String
+  contactId String?
+  projectId String?
+
+  status InvoiceStatus @default(DRAFT)
+
+  issueDate DateTime  @default(now())
+  dueDate   DateTime
+  sentAt    DateTime?
+  paidAt    DateTime?
+  voidedAt  DateTime?
+
+  currency String @db.Char(3)
+
+  /// All derived from InvoiceItem by the service; never supplied by a client.
+  subtotalMinor   BigInt @default(0)
+  discountMinor   BigInt @default(0)
+  taxMinor        BigInt @default(0)
+  totalMinor      BigInt @default(0)
+  amountPaidMinor BigInt @default(0)
+  balanceMinor    BigInt @default(0)
+
+  notes String?
+  terms String?
+
+  createdById  String?
+  approvedById String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status, dueDate])
+  @@index([organizationId, companyId])
+  @@index([organizationId, projectId])
+  @@index([organizationId, issueDate])
+}
+
+model InvoiceItem {
+  id             String @id @default(cuid())
+  organizationId String
+  invoiceId      String
+
+  description String
+
+  /// Scaled integer: quantity 2.5 is stored as 2500 with scale 3. Keeps the
+  /// whole calculation in integer arithmetic.
+  quantityScaled Int @default(1000)
+  quantityScale  Int @default(3)
+
+  unitPriceMinor BigInt @default(0)
+
+  /// Basis points: 1000 = 10%.
+  discountBasisPoints Int @default(0)
+  taxBasisPoints      Int @default(0)
+
+  /// Derived by the service from the fields above.
+  lineSubtotalMinor BigInt @default(0)
+  lineDiscountMinor BigInt @default(0)
+  lineTaxMinor      BigInt @default(0)
+  lineTotalMinor    BigInt @default(0)
+
+  position Int @default(0)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, invoiceId, position])
+}
+
+model Payment {
+  id             String @id @default(cuid())
+  organizationId String
+
+  invoiceId String?
+  companyId String?
+
+  amountMinor BigInt
+  currency    String @db.Char(3)
+
+  method     PaymentMethod @default(BANK_TRANSFER)
+  receivedAt DateTime      @default(now())
+  reference  String?
+  notes      String?
+
+  recordedById String?
+  createdAt    DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoice      Invoice?     @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, invoiceId])
+  @@index([organizationId, receivedAt])
+}
+
+model ExpenseCategory {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name     String
+  parentId String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       ExpenseCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children     ExpenseCategory[] @relation("CategoryTree")
+  expenses     Expense[]
+
+  @@unique([organizationId, name])
+}
+
+model Expense {
+  id             String @id @default(cuid())
+  organizationId String
+
+  categoryId String?
+  projectId  String?
+
+  vendor      String?
+  description String?
+
+  amountMinor BigInt
+  taxMinor    BigInt @default(0)
+  currency    String @db.Char(3)
+
+  incurredOn DateTime
+  status     ExpenseStatus @default(DRAFT)
+
+  submittedByMembershipId String?
+  approvedByMembershipId  String?
+  decidedAt               DateTime?
+  decisionNote            String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     ExpenseCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  project      Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  submittedBy  Membership?      @relation("ExpenseSubmitter", fields: [submittedByMembershipId], references: [id], onDelete: SetNull)
+  approvedBy   Membership?      @relation("ExpenseApprover", fields: [approvedByMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, incurredOn])
+  @@index([organizationId, projectId])
+  @@index([organizationId, submittedByMembershipId])
+  @@index([organizationId, categoryId])
+}
+
+model Budget {
+  id             String @id @default(cuid())
+  organizationId String
+
+  scopeType BudgetScope
+  /// Project id, department id or category id depending on scopeType.
+  scopeId   String?
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  amountMinor BigInt
+  currency    String @db.Char(3)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, scopeType, scopeId, periodStart])
+}

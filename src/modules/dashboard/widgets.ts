@@ -63,6 +63,7 @@ export async function loadWidgets(): Promise<void> {
     () => import('../crm/widgets'),
     () => import('../projects/widgets'),
     () => import('../tasks/widgets'),
+    () => import('../finance/widgets'),
   ]
 
   await Promise.all(
@@ -80,6 +81,4 @@ export async function loadWidgets(): Promise<void> {
  * Modules not yet built, named so the dashboard can say what is coming instead
  * of pretending to have it. Removed as each phase lands.
  */
-export const PENDING_MODULES = [
-  { module: 'Finance', contributes: 'revenue, expenses, invoice status, cash flow' },
-] as const
+export const PENDING_MODULES: ReadonlyArray<{ module: string; contributes: string }> = []

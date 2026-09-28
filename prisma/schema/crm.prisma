@@ -75,6 +75,8 @@ model Company {
   contacts Contact[]
   deals    Deal[]
   projects Project[]
+  invoices Invoice[]
+  payments Payment[]
 
   @@index([organizationId, name])
   @@index([organizationId, ownerMembershipId])
@@ -104,7 +106,8 @@ model Contact {
   company      Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   owner        Membership?  @relation("ContactOwner", fields: [ownerMembershipId], references: [id], onDelete: SetNull)
 
-  deals Deal[]
+  deals    Deal[]
+  invoices Invoice[]
 
   @@index([organizationId, companyId])
   @@index([organizationId, lastName])

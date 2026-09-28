@@ -87,6 +87,14 @@ model Organization {
   skills           Skill[]
   membershipSkills MembershipSkill[]
 
+  numberSequences   NumberSequence[]
+  invoices          Invoice[]
+  invoiceItems      InvoiceItem[]
+  payments          Payment[]
+  expenseCategories ExpenseCategory[]
+  expenses          Expense[]
+  budgets           Budget[]
+
   @@index([status])
   @@index([createdById])
 }
@@ -132,7 +140,9 @@ model Membership {
   departmentsLed  Department[]      @relation("DepartmentHead")
   employeeProfile EmployeeProfile?
   directReports   EmployeeProfile[] @relation("EmployeeManager")
-  skills          MembershipSkill[]
+  skills            MembershipSkill[]
+  expensesSubmitted Expense[]         @relation("ExpenseSubmitter")
+  expensesApproved  Expense[]         @relation("ExpenseApprover")
 
   /// One membership per user per organization — the constraint the whole
   /// multi-org model rests on.

@@ -96,6 +96,8 @@ model Project {
   members    ProjectMember[]
   milestones Milestone[]
   tasks      Task[]
+  invoices   Invoice[]
+  expenses   Expense[]
 
   @@unique([organizationId, key])
   @@index([organizationId, status, dueDate])

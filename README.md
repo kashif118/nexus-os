@@ -3,11 +3,12 @@
 An AI-powered **business operating system**: work, money, people, clients and documents in
 one multi-tenant platform, with an automation engine and permission-scoped AI agents.
 
-> **Status: Phase 01 of 25 — Foundation.**
+> **Status: Phase 02 of 25 — Authentication.**
 > The architecture is specified in full under [`docs/`](./docs); application modules are
 > built phase by phase against it. This repository currently contains the toolchain, the
-> configuration kernel, the design-token layer and the database/ORM foundation — and
-> nothing that pretends to be more than that.
+> configuration kernel, the design system foundation, the identity schema and a complete
+> email/password authentication system — and nothing that pretends to be more than that.
+> Organizations, roles and permissions come next.
 
 ---
 
@@ -46,13 +47,17 @@ npm install
 npm approve-scripts prisma @prisma/engines esbuild unrs-resolver
 npm rebuild prisma @prisma/engines esbuild unrs-resolver
 
-# 2. Configure the environment
-cp .env.example .env.local     # then edit the database URLs
+# 2. Start a local PostgreSQL (no Docker or admin rights needed)
+npm run db:start               # prints the DATABASE_URL to use
 
-# 3. Generate the Prisma client
+# 3. Configure the environment
+cp .env.example .env.local     # then paste in the database URLs
+
+# 4. Generate the client and create the schema
 npm run db:generate
+npm run db:deploy
 
-# 4. Start the development server
+# 5. Start the development server
 npm run dev                    # http://localhost:3000
 ```
 
@@ -62,17 +67,42 @@ npm run dev                    # http://localhost:3000
 **unpooled** connection used by migrations (DDL through a transaction-mode pooler is
 unreliable). Both may point at the same server locally.
 
-The schema is split by domain across `prisma/schema/`. Phase 01 defines only the datasource
-and generator — the first models arrive with the identity and tenancy work in Phase 02, at
-which point `npm run db:migrate` produces the first migration.
+The schema is split by domain across `prisma/schema/`. It currently holds the identity
+models — `User`, `Session`, `VerificationToken`, `LoginEvent` and `AuditLog`. They are
+deliberately tenant-free: a user is a global identity that will join organizations through
+`Membership` in the next phase.
 
 ```bash
+npm run db:start        # start a local PostgreSQL (no Docker/admin needed)
+npm run db:stop         # stop it
 npm run db:validate     # validate the schema
 npm run db:generate     # generate the Prisma client
 npm run db:migrate      # create + apply a migration (development)
 npm run db:deploy       # apply migrations (CI / production)
 npm run db:studio       # browse data
 ```
+
+`npm run db:start` runs a real PostgreSQL server from a prebuilt binary into
+`.postgres-data/`. It exists so integration and end-to-end tests run against genuine
+Postgres semantics rather than a mock; CI uses a service container instead.
+
+## Authentication
+
+Email and password, with server-side sessions. The design — and the reason it departs from
+the original Auth.js plan — is recorded in [`docs/ROADMAP.md`](./docs/ROADMAP.md) §U9.
+
+| Property         | Implementation                                                                 |
+| ---------------- | ------------------------------------------------------------------------------ |
+| Password hashing | argon2id (19 MiB, t=2, p=1) via `@node-rs/argon2`                              |
+| Session token    | 256-bit random value in an httpOnly cookie, stored only as a SHA-256 digest    |
+| Session lifetime | 30 days, sliding, refreshed at most hourly; revocable from the account page    |
+| Route protection | `requireUserPage()` in the server layout — the edge proxy only redirects early |
+| Throttling       | 5 failures per email / 20 per IP in 15 minutes, counted from `LoginEvent`      |
+| Enumeration      | Sign-in and password reset respond identically for known and unknown addresses |
+| Reset tokens     | Single-use, 30-minute TTL; every session is revoked when one is used           |
+
+Email is not delivered yet: `getMailer()` prints the message to the server console until a
+Resend adapter is configured. The flows themselves are complete and covered by tests.
 
 ## Scripts
 
@@ -84,7 +114,8 @@ npm run db:studio       # browse data
 | `npm run lint`                    | ESLint, including architectural boundary rules   |
 | `npm run format` / `format:check` | Prettier                                         |
 | `npm run check:env`               | assert `.env.example` matches the Zod env schema |
-| `npm test` / `test:watch`         | Vitest unit tests                                |
+| `npm test` / `test:watch`         | Vitest unit + integration tests                  |
+| `npm run db:start` / `db:stop`    | local PostgreSQL for development and tests       |
 | `npm run test:e2e`                | Playwright end-to-end tests                      |
 | `npm run verify`                  | everything CI runs, in one command               |
 

@@ -1,0 +1,163 @@
+// NEXUS OS — identity and authentication (docs/DATA-MODEL.md §E.1.1).
+//
+// These models are deliberately tenant-free: a User is a GLOBAL identity that
+// may belong to many organizations. The organization, membership and role models
+// arrive in the multi-tenancy and RBAC phases and attach to `User` through
+// `Membership` — nothing here needs to change when they do.
+//
+// Not yet modelled, and why:
+//   - `Account`  (OAuth links) — no OAuth provider is wired up yet
+//   - MFA fields — TOTP enrolment ships with the Security Center
+// Both are additive when their phase arrives.
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum VerificationPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+/// Who performed an audited action. Agents, workflows and API keys act on their
+/// own behalf later; today every actor is a user or the system.
+enum ActorType {
+  USER
+  SYSTEM
+  AGENT
+  WORKFLOW
+  API_KEY
+}
+
+model User {
+  id String @id @default(cuid())
+
+  /// Always stored lower-cased and trimmed; normalisation happens in the Zod
+  /// schema so the uniqueness constraint cannot be bypassed by casing.
+  email String @unique
+
+  name String
+
+  /// Null for accounts that only ever authenticate through an OAuth provider.
+  passwordHash String?
+
+  /// Null until the address is proven. Never a boolean: the timestamp is
+  /// evidence, and the audit trail needs to know when.
+  emailVerifiedAt DateTime?
+
+  image        String?
+  status       UserStatus @default(ACTIVE)
+  lastActiveAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions    Session[]
+  loginEvents LoginEvent[]
+  auditLogs   AuditLog[]
+
+  @@index([status])
+}
+
+/// Server-side session record. The product needs revocation, device listing and
+/// a login history (docs/PLATFORM.md §G.3), none of which a stateless JWT can
+/// provide.
+model Session {
+  id     String @id @default(cuid())
+  userId String
+
+  /// SHA-256 of the opaque session token. The token itself is NEVER stored, so
+  /// a database leak cannot be replayed as a valid session.
+  tokenHash String @unique
+
+  expiresAt     DateTime
+  lastSeenAt    DateTime  @default(now())
+  revokedAt     DateTime?
+  revokedReason String?
+
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+/// Single-use, expiring tokens for email verification and password reset.
+/// Stored hashed for the same reason as session tokens.
+model VerificationToken {
+  id String @id @default(cuid())
+
+  /// The email address the token was issued for.
+  identifier String
+  tokenHash  String              @unique
+  purpose    VerificationPurpose
+
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([identifier, purpose])
+  @@index([expiresAt])
+}
+
+/// Append-only record of every authentication attempt, successful or not.
+/// Doubles as the throttling source: recent failures are counted from here, so
+/// rate limiting survives serverless instances without external state.
+model LoginEvent {
+  id     String  @id @default(cuid())
+  userId String?
+
+  /// Recorded even when no user matches, so attacks on non-existent accounts
+  /// are still visible and still throttled.
+  email   String
+  success Boolean
+  reason  String?
+
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Append-only compliance log (docs/OPERATIONS.md §N.1). `organizationId` is
+/// nullable only because organizations do not exist yet; account-level events
+/// such as sign-up and password reset legitimately have no organization.
+model AuditLog {
+  id String @id @default(cuid())
+
+  organizationId String?
+  actorId        String?
+  actorType      ActorType @default(USER)
+
+  action     String
+  entityType String
+  entityId   String?
+
+  metadata Json?
+
+  ip        String?
+  userAgent String?
+  requestId String?
+
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+}

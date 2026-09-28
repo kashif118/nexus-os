@@ -94,3 +94,20 @@ export function getServerEnv(): ServerEnv {
 /** Convenience flags derived from configuration. */
 export const isProduction = process.env.NODE_ENV === 'production'
 export const isTest = process.env.NODE_ENV === 'test'
+
+/**
+ * The pooled runtime connection string.
+ *
+ * Kept out of module scope deliberately: `src/lib/db.ts` calls this only when a
+ * client is actually constructed, so a build without database credentials still
+ * succeeds while a request without them fails with a clear message.
+ */
+export function getDatabaseUrl(): string {
+  const url = getServerEnv().DATABASE_URL
+  if (!url) {
+    throw new Error(
+      'DATABASE_URL is not configured. Copy .env.example to .env.local and set a PostgreSQL connection string.',
+    )
+  }
+  return url
+}

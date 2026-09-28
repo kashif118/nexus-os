@@ -35,3 +35,7 @@ Thumbs.db
 # misc
 *.tsbuildinfo
 .vercel
+
+# local embedded postgres cluster (npm run db:start)
+.postgres-data/
+.env.test.local

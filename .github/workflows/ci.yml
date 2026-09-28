@@ -15,8 +15,24 @@ env:
 
 jobs:
   quality:
-    name: Typecheck · Lint · Format · Unit
+    name: Typecheck · Lint · Format · Tests
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nexus_os_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nexus_os_test
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nexus_os_test
     steps:
       - uses: actions/checkout@v4
 
@@ -43,7 +59,10 @@ jobs:
       - name: .env.example is in sync with the env schema
         run: npm run check:env
 
-      - name: Unit tests
+      - name: Apply migrations
+        run: npm run db:deploy
+
+      - name: Unit and integration tests
         run: npm test
 
   database:
@@ -107,6 +126,22 @@ jobs:
     name: End-to-end
     runs-on: ubuntu-latest
     needs: [quality]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nexus_os_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nexus_os_e2e
+      DIRECT_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nexus_os_e2e
     steps:
       - uses: actions/checkout@v4
 
@@ -120,6 +155,9 @@ jobs:
 
       - name: Generate Prisma client
         run: npm run db:generate
+
+      - name: Apply migrations
+        run: npm run db:deploy
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

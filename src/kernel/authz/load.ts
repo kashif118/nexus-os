@@ -15,7 +15,8 @@ import { createPermissionSet, type PermissionSet } from './can'
  */
 export interface ResolvedRoles {
   permissions: PermissionSet
-  roles: Array<{ key: string; name: string; priority: number }>
+  /** Role id is carried so record-level grants can name a role as a subject. */
+  roles: Array<{ id: string; key: string; name: string; priority: number }>
 }
 
 export async function loadPermissions(input: {
@@ -28,6 +29,7 @@ export async function loadPermissions(input: {
     select: {
       role: {
         select: {
+          id: true,
           key: true,
           name: true,
           priority: true,
@@ -50,7 +52,7 @@ export async function loadPermissions(input: {
     // trusted.
     if (role.organizationId !== null && role.organizationId !== input.organizationId) continue
 
-    roles.push({ key: role.key, name: role.name, priority: role.priority })
+    roles.push({ id: role.id, key: role.key, name: role.name, priority: role.priority })
 
     for (const entry of role.permissions) {
       const key = entry.permission.key

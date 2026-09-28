@@ -98,6 +98,8 @@ model Project {
   tasks      Task[]
   invoices   Invoice[]
   expenses   Expense[]
+  folders    Folder[]
+  documents  Document[]
 
   @@unique([organizationId, key])
   @@index([organizationId, status, dueDate])

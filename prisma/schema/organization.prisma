@@ -95,6 +95,11 @@ model Organization {
   expenses          Expense[]
   budgets           Budget[]
 
+  folders          Folder[]
+  documents        Document[]
+  documentVersions DocumentVersion[]
+  attachments      Attachment[]
+
   @@index([status])
   @@index([createdById])
 }
@@ -143,6 +148,11 @@ model Membership {
   skills            MembershipSkill[]
   expensesSubmitted Expense[]         @relation("ExpenseSubmitter")
   expensesApproved  Expense[]         @relation("ExpenseApprover")
+
+  foldersCreated    Folder[]          @relation("FolderCreator")
+  documentsUploaded Document[]        @relation("DocumentUploader")
+  documentVersions  DocumentVersion[] @relation("DocumentVersionUploader")
+  attachmentsMade   Attachment[]      @relation("AttachmentCreator")
 
   /// One membership per user per organization — the constraint the whole
   /// multi-org model rests on.

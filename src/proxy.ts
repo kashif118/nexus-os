@@ -46,6 +46,14 @@ export function proxy(request: NextRequest) {
   const hasSessionCookie = SESSION_COOKIE_NAMES.some((name) => request.cookies.get(name)?.value)
   if (hasSessionCookie) return NextResponse.next()
 
+  // An API route answers in JSON, so a signed-out caller gets 401 rather than a
+  // redirect to an HTML sign-in page. Redirecting here is worse than useless: a
+  // fetch follows it and reports success, so the caller sees a 200 carrying
+  // markup instead of the failure that actually happened.
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Sign in to continue.' }, { status: 401 })
+  }
+
   const signIn = new URL('/sign-in', request.url)
   signIn.searchParams.set('next', pathname)
   return NextResponse.redirect(signIn)

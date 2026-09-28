@@ -75,7 +75,9 @@ model Company {
   contacts Contact[]
   deals    Deal[]
   projects Project[]
-  invoices Invoice[]
+  invoices  Invoice[]
+  folders   Folder[]
+  documents Document[]
   payments Payment[]
 
   @@index([organizationId, name])

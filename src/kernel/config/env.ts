@@ -26,6 +26,34 @@ export const serverEnvSchema = z.object({
 
   /** Direct (unpooled) connection string — migrations only. */
   DIRECT_DATABASE_URL: z.url().optional(),
+
+  /**
+   * Document storage (Phase 12).
+   *
+   * `local` writes to a gitignored directory and is for development only — a
+   * serverless host has an ephemeral filesystem, so a production deployment
+   * must set `s3`. The S3 variables are required only when that driver is
+   * selected, which is why the object is refined rather than each field being
+   * marked required.
+   */
+  STORAGE_DRIVER: z.enum(['local', 's3']).default('local'),
+  STORAGE_LOCAL_DIR: z.string().min(1).default('.storage'),
+  STORAGE_MAX_UPLOAD_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(200 * 1024 * 1024)
+    .optional(),
+
+  S3_ENDPOINT: z.url().optional(),
+  S3_REGION: z.string().min(1).optional(),
+  S3_BUCKET: z.string().min(1).optional(),
+  S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  S3_FORCE_PATH_STYLE: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
 })
 
 /** Variables exposed to the browser. Must be `NEXT_PUBLIC_` prefixed. */
@@ -110,4 +138,69 @@ export function getDatabaseUrl(): string {
     )
   }
   return url
+}
+
+/** Resolved storage configuration, validated at the point of use. */
+export type StorageConfig =
+  | { driver: 'local'; localDir: string; maxUploadBytes: number | undefined }
+  | {
+      driver: 's3'
+      maxUploadBytes: number | undefined
+      s3: {
+        endpoint: string
+        region: string
+        bucket: string
+        accessKeyId: string
+        secretAccessKey: string
+        forcePathStyle: boolean
+      }
+    }
+
+/**
+ * Storage settings for the selected driver.
+ *
+ * The S3 variables are checked here rather than in the schema so that a
+ * development machine is never asked for credentials it does not use — but
+ * selecting `s3` without them fails loudly at the first upload rather than
+ * silently writing nowhere. The secret is returned to the driver and nowhere
+ * else; it is never logged and never crosses to the client.
+ */
+export function getStorageConfig(): StorageConfig {
+  const env = getServerEnv()
+  const maxUploadBytes = env.STORAGE_MAX_UPLOAD_BYTES
+
+  if (env.STORAGE_DRIVER !== 's3') {
+    return { driver: 'local', localDir: env.STORAGE_LOCAL_DIR, maxUploadBytes }
+  }
+
+  const missing = (
+    [
+      ['S3_ENDPOINT', env.S3_ENDPOINT],
+      ['S3_REGION', env.S3_REGION],
+      ['S3_BUCKET', env.S3_BUCKET],
+      ['S3_ACCESS_KEY_ID', env.S3_ACCESS_KEY_ID],
+      ['S3_SECRET_ACCESS_KEY', env.S3_SECRET_ACCESS_KEY],
+    ] as const
+  )
+    .filter(([, value]) => !value)
+    .map(([name]) => name)
+
+  if (missing.length > 0) {
+    throw new Error(
+      `STORAGE_DRIVER=s3 requires: ${missing.join(', ')}. See .env.example and docs/OPERATIONS.md §P.4.`,
+    )
+  }
+
+  return {
+    driver: 's3',
+    maxUploadBytes,
+    s3: {
+      endpoint: env.S3_ENDPOINT!,
+      region: env.S3_REGION!,
+      bucket: env.S3_BUCKET!,
+      accessKeyId: env.S3_ACCESS_KEY_ID!,
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY!,
+      forcePathStyle: env.S3_FORCE_PATH_STYLE,
+    },
+  }
 }

@@ -44,6 +44,12 @@ export const NAVIGATION: NavDefinition[] = [
     requires: ['people.read'],
   },
   {
+    href: '/documents',
+    label: 'Documents',
+    icon: 'documents',
+    requires: ['document.read.any', 'document.read.scoped'],
+  },
+  {
     href: '/crm',
     label: 'CRM',
     icon: 'crm',

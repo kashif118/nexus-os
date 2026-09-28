@@ -53,7 +53,7 @@ export interface Ctx {
   }
 
   /** Roles held in this organization, highest priority first. */
-  readonly roles: ReadonlyArray<{ key: string; name: string; priority: number }>
+  readonly roles: ReadonlyArray<{ id: string; key: string; name: string; priority: number }>
   readonly permissions: PermissionSet
 
   /** True if the actor holds the permission. For conditional data, not security. */

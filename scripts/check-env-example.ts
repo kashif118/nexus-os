@@ -15,12 +15,20 @@ const declared = new Set([
   ...Object.keys(clientEnvSchema.shape),
 ])
 
+/**
+ * A variable counts as documented whether it is set (`NAME=value`) or shown
+ * commented out (`# NAME=value`).
+ *
+ * The commented form is the correct way to document an optional variable that
+ * must NOT be set by default — an empty `S3_ENDPOINT=` would fail URL
+ * validation on every boot, and filling in a placeholder credential would be
+ * inventing one. The guard still fails if the variable is absent entirely.
+ */
 const documented = new Set(
   readFileSync(EXAMPLE_PATH, 'utf8')
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith('#'))
-    .map((line) => line.split('=')[0]?.trim())
+    .map((line) => /^#?\s*([A-Z][A-Z0-9_]*)\s*=/.exec(line)?.[1])
     .filter((key): key is string => Boolean(key)),
 )
 

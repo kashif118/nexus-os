@@ -112,6 +112,12 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set<string>([
   'ExpenseCategory',
   'Expense',
   'Budget',
+
+  // Documents
+  'Folder',
+  'Document',
+  'DocumentVersion',
+  'Attachment',
 ])
 
 /** Prisma delegate property name (`membership`) for a model name (`Membership`). */

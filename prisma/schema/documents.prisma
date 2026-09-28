@@ -1,0 +1,171 @@
+// NEXUS OS — documents (docs/DATA-MODEL.md §E.1.6).
+//
+// Two rules shape this file:
+//
+//  1. **The storage key is never a URL.** `storageKey` identifies an object
+//     inside a private store. It is never rendered to a client and never
+//     handed out; every byte leaves through a route handler that has already
+//     checked permission. A document that is reachable by guessing a URL is
+//     the failure this module exists to prevent.
+//
+//  2. **Visibility is data, not decoration.** `visibility` plus the existing
+//     `ResourcePolicy` grants decide who may read a document. The service
+//     resolves both; the UI only reflects the answer.
+
+enum DocumentVisibility {
+  /// Any member of the organization holding a document read permission.
+  ORGANIZATION
+  /// Only subjects with an explicit grant, the uploader, or an org-wide reader.
+  RESTRICTED
+  /// Only the uploader and subjects explicitly granted access. A blanket
+  /// `document.read.any` does NOT open a private document.
+  PRIVATE
+}
+
+/// Result of the content check performed before a document is downloadable.
+/// PENDING means "uploaded but not yet cleared"; nothing PENDING or INFECTED is
+/// served.
+enum DocumentScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  /// No scanner configured. The document is served, and the UI says so.
+  SKIPPED
+}
+
+/// A folder in the document tree. `path` is materialized (`/contracts/2026`)
+/// so a subtree query is one indexed prefix match rather than a recursion.
+model Folder {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name     String
+  parentId String?
+  /// Materialized ancestor path, always leading and trailing slash delimited.
+  path     String
+
+  projectId String?
+  companyId String?
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Folder?      @relation("FolderTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Folder[]     @relation("FolderTree")
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdBy    Membership?  @relation("FolderCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  documents Document[]
+
+  /// Two folders cannot share a name under the same parent.
+  ///
+  /// This constraint does NOT cover root folders: their parentId is NULL and
+  /// Postgres treats NULLs as distinct. A partial unique index added in
+  /// migration 20260929071000_folder_root_unique covers that case. Prisma has
+  /// no syntax for a partial index, so "prisma migrate diff" will propose
+  /// dropping it — keep it when regenerating migrations.
+  @@unique([organizationId, parentId, name])
+  @@index([organizationId, path])
+  @@index([organizationId, projectId])
+}
+
+model Document {
+  id             String @id @default(cuid())
+  organizationId String
+
+  folderId String?
+
+  name        String
+  description String?
+
+  mimeType  String
+  sizeBytes Int
+
+  /// Opaque key inside the private object store — `org/{orgId}/{yyyy}/{uuid}`.
+  /// Globally unique, never rendered to a client.
+  storageKey String @unique
+
+  /// SHA-256 of the stored bytes, used to detect corruption and duplicates.
+  checksum String
+
+  version Int @default(1)
+
+  visibility DocumentVisibility @default(ORGANIZATION)
+  scanStatus DocumentScanStatus @default(PENDING)
+
+  /// Set when the content check rejects the file, so the reason survives.
+  scanNote String?
+
+  uploadedById String?
+
+  projectId String?
+  companyId String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  folder       Folder?      @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  uploadedBy   Membership?  @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  company      Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  versions    DocumentVersion[]
+  attachments Attachment[]
+
+  @@index([organizationId, folderId])
+  @@index([organizationId, projectId])
+  @@index([organizationId, visibility])
+  @@index([organizationId, createdAt])
+}
+
+/// One stored revision. The Document row always points at the newest; older
+/// versions keep their own object so a replaced file is still retrievable.
+model DocumentVersion {
+  id             String @id @default(cuid())
+  organizationId String
+  documentId     String
+
+  version    Int
+  storageKey String @unique
+  sizeBytes  Int
+  checksum   String
+  mimeType   String
+
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  uploadedBy   Membership?  @relation("DocumentVersionUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@unique([documentId, version])
+  @@index([organizationId, documentId])
+}
+
+/// Links a document to any entity (task, project, deal, invoice, …) without a
+/// foreign key per type. The pair is unique so the same file is not attached
+/// twice to the same record.
+model Attachment {
+  id             String @id @default(cuid())
+  organizationId String
+
+  documentId String
+  entityType String
+  entityId   String
+
+  attachedById String?
+  createdAt    DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  attachedBy   Membership?  @relation("AttachmentCreator", fields: [attachedById], references: [id], onDelete: SetNull)
+
+  @@unique([documentId, entityType, entityId])
+  @@index([organizationId, entityType, entityId])
+}

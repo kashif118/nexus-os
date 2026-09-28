@@ -83,6 +83,7 @@ const MANAGER_PERMISSIONS: Permission[] = [
   'people.workload.view',
   'document.read.any',
   'document.update',
+  'document.delete',
   'document.share',
   'document.folder.manage',
   'finance.invoice.read',

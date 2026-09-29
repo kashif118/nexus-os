@@ -119,6 +119,12 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set<string>([
   'NotificationPreference',
   'ActivityLog',
 
+  // Workflows
+  'Workflow',
+  'WorkflowVersion',
+  'WorkflowRun',
+  'WorkflowRunStep',
+
   // Documents
   'Folder',
   'Document',

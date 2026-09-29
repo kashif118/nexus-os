@@ -96,6 +96,10 @@ model Organization {
   budgets           Budget[]
 
   outboxEvents            OutboxEvent[]
+  workflows               Workflow[]
+  workflowVersions        WorkflowVersion[]
+  workflowRuns            WorkflowRun[]
+  workflowRunSteps        WorkflowRunStep[]
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
   activityLogs            ActivityLog[]
@@ -154,6 +158,7 @@ model Membership {
   expensesSubmitted Expense[]         @relation("ExpenseSubmitter")
   expensesApproved  Expense[]         @relation("ExpenseApprover")
 
+  workflowsOwned          Workflow[]               @relation("WorkflowOwner")
   notificationsReceived   Notification[]           @relation("NotificationRecipient")
   notificationPreferences NotificationPreference[] @relation("PreferenceOwner")
 

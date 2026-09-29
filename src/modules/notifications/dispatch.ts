@@ -20,6 +20,7 @@ export async function loadSubscribers(): Promise<void> {
   const loaders: Array<() => Promise<unknown>> = [
     () => import('./subscriber'),
     () => import('./activity-subscriber'),
+    () => import('@/modules/workflows/subscriber'),
   ]
 
   await Promise.all(

@@ -172,7 +172,7 @@ describe.skipIf(!hasDatabase)('Outbox and notifications', () => {
         }),
       ).rejects.toThrow('the change failed')
 
-      await drainOutbox()
+      await drainOutbox({ organizationId: state.orgId })
 
       // No event row survived, so nobody was told about something that did not
       // happen. This is the whole point of an outbox.
@@ -204,9 +204,9 @@ describe.skipIf(!hasDatabase)('Outbox and notifications', () => {
         payload: { name: 'bob' },
       })
 
-      await drainOutbox()
-      await drainOutbox()
-      await drainOutbox()
+      await drainOutbox({ organizationId: state.orgId })
+      await drainOutbox({ organizationId: state.orgId })
+      await drainOutbox({ organizationId: state.orgId })
 
       expect(calls).toBe(1)
     })
@@ -235,7 +235,7 @@ describe.skipIf(!hasDatabase)('Outbox and notifications', () => {
         payload: { name: 'bob' },
       })
 
-      const result = await drainOutbox()
+      const result = await drainOutbox({ organizationId: state.orgId })
 
       expect(healthy).toBe(1)
       expect(result.failed).toBe(1)
@@ -273,7 +273,7 @@ describe.skipIf(!hasDatabase)('Outbox and notifications', () => {
       })
 
       for (let index = 0; index < 8; index += 1) {
-        await drainOutbox()
+        await drainOutbox({ organizationId: state.orgId })
       }
 
       // Five attempts is the cap; the ninth drain must not call it again.
@@ -299,7 +299,7 @@ describe.skipIf(!hasDatabase)('Outbox and notifications', () => {
         },
       })
 
-      await drainOutbox()
+      await drainOutbox({ organizationId: state.orgId })
 
       const bob = await makeCtx('bob')
       const alice = await makeCtx('alice')
@@ -340,7 +340,7 @@ describe.skipIf(!hasDatabase)('Outbox and notifications', () => {
         },
       })
 
-      await drainOutbox()
+      await drainOutbox({ organizationId: state.orgId })
 
       const after = await service.listNotifications(bob)
       expect(after).toHaveLength(before)
@@ -367,7 +367,7 @@ describe.skipIf(!hasDatabase)('Outbox and notifications', () => {
         payload: { actorName: 'alice', title: 'Big deal', stageName: 'Negotiation' },
       })
 
-      await drainOutbox()
+      await drainOutbox({ organizationId: state.orgId })
 
       const alice = await makeCtx('alice')
       const activity = await service.listActivity(alice, {
@@ -399,7 +399,7 @@ describe.skipIf(!hasDatabase)('Outbox and notifications', () => {
         },
       })
 
-      await drainOutbox()
+      await drainOutbox({ organizationId: state.orgId })
 
       const owner = await makeCtx('owner')
       const ownersNotifications = await service.listNotifications(owner)
@@ -428,7 +428,7 @@ describe.skipIf(!hasDatabase)('Outbox and notifications', () => {
         },
       })
 
-      await drainOutbox()
+      await drainOutbox({ organizationId: state.orgId })
 
       const bob = await makeCtx('bob')
       const owner = await makeCtx('owner')

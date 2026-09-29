@@ -1,0 +1,181 @@
+// NEXUS OS — workflow automation (docs/AI-AND-AUTOMATION.md §L).
+//
+// The shape here follows from three requirements:
+//
+//  1. **A running workflow must not change under its own feet.** Editing a
+//     workflow while a run is in flight would mean the run finishes under rules
+//     it did not start with. So publishing snapshots the graph into an
+//     immutable `WorkflowVersion`, and a run pins the version it started on.
+//
+//  2. **A run must survive the process.** Approvals wait for a person and
+//     delays wait for the clock, both of which outlive any request and most
+//     deployments. Every step is therefore a row, and the interpreter is
+//     resumable from those rows rather than from memory.
+//
+//  3. **A step must be replayable without duplicating its effect.** The unique
+//     pair `(runId, nodeId)` is what makes that true: a retried run finds the
+//     step already completed and skips it.
+
+enum WorkflowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum WorkflowRunStatus {
+  QUEUED
+  RUNNING
+  /// Suspended at an approval or a delay. Resumed by a decision or the clock.
+  WAITING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum WorkflowStepStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  WAITING
+}
+
+model Workflow {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name        String
+  description String?
+
+  /// Denormalised from the published graph so matching an event is one indexed
+  /// lookup rather than a scan through every workflow's JSON.
+  triggerType String
+
+  status WorkflowStatus @default(DRAFT)
+
+  /// The graph being edited. The published copy lives on WorkflowVersion.
+  draftGraph Json
+
+  publishedVersionId String? @unique
+
+  /// Runs execute with this member's permissions, intersected with the action's
+  /// own requirements. A workflow can never do more than the person who owns it.
+  ownerMembershipId String?
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        Membership?      @relation("WorkflowOwner", fields: [ownerMembershipId], references: [id], onDelete: SetNull)
+  published    WorkflowVersion? @relation("PublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+
+  versions WorkflowVersion[] @relation("WorkflowVersions")
+  runs     WorkflowRun[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status, triggerType])
+}
+
+/// An immutable published snapshot. Never updated after creation.
+model WorkflowVersion {
+  id             String @id @default(cuid())
+  organizationId String
+  workflowId     String
+
+  version     Int
+  graph       Json
+  triggerType String
+
+  publishedById String?
+  createdAt     DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workflow     Workflow     @relation("WorkflowVersions", fields: [workflowId], references: [id], onDelete: Cascade)
+
+  publishedFor Workflow?     @relation("PublishedVersion")
+  runs         WorkflowRun[]
+
+  @@unique([workflowId, version])
+  @@index([organizationId, workflowId])
+}
+
+model WorkflowRun {
+  id             String @id @default(cuid())
+  organizationId String
+
+  workflowId String
+  versionId  String
+
+  status WorkflowRunStatus @default(QUEUED)
+
+  /// What started it: an outbox event, a person, or a schedule.
+  triggerType  String
+  triggerEvent Json?
+
+  /// Carried between steps. Each action may add to it; nothing may read another
+  /// run's context.
+  context Json?
+
+  /// Guards against a workflow triggering itself through its own side effects.
+  causationDepth Int     @default(0)
+  causedByRunId  String?
+
+  error String?
+
+  /// Set when suspended at a delay; the resume sweep picks these up.
+  resumeAt DateTime?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workflow     Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  version      WorkflowVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  steps WorkflowRunStep[]
+
+  @@index([organizationId, workflowId, startedAt])
+  @@index([status, resumeAt])
+}
+
+/// One node's execution. Append-only in spirit: a step is written when it starts
+/// and updated once when it finishes.
+model WorkflowRunStep {
+  id             String @id @default(cuid())
+  organizationId String
+  runId          String
+
+  nodeId   String
+  nodeType String
+  /// Action or trigger type, for the run inspector.
+  kind     String?
+
+  status WorkflowStepStatus @default(PENDING)
+
+  input  Json?
+  output Json?
+  error  String?
+
+  attempts Int @default(0)
+
+  /// Approval nodes only.
+  approvalDecision  String?
+  approvedById      String?
+  approvalDeadline  DateTime?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run          WorkflowRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  /// Idempotency: one row per node per run, so a replay skips what is done.
+  @@unique([runId, nodeId])
+  @@index([organizationId, runId])
+  @@index([status])
+}

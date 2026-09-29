@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { getCronSecret } from '@/kernel/config/env'
 import { runDrain } from '@/modules/notifications/dispatch'
+import { resumeDueRuns, runQueued } from '@/modules/workflows/engine'
 
 /**
  * The outbox drain, as a scheduled endpoint.
@@ -10,6 +11,10 @@ import { runDrain } from '@/modules/notifications/dispatch'
  * `after()`. This endpoint is the safety net for the cases that misses: a
  * process that died mid-drain, a subscriber that failed and is due a retry, an
  * event emitted by a job rather than a request.
+ *
+ * It also moves workflow runs along — a run suspended at a delay or an approval
+ * deadline has nothing else to wake it, so without a scheduled call those runs
+ * would wait forever.
  *
  * Authentication is a shared secret in a header, compared in constant time.
  * It is NOT a session: a scheduler has no user, and giving one a session would
@@ -41,8 +46,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Not found.' }, { status: 404 })
   }
 
-  const result = await runDrain(200)
-  return NextResponse.json(result)
+  // Three sweeps, in order: deliver events, execute anything they queued, and
+  // wake runs whose delay or approval deadline has passed.
+  const events = await runDrain(200)
+  const queued = await runQueued(50)
+  const resumed = await resumeDueRuns(50)
+
+  return NextResponse.json({
+    events,
+    workflowRuns: { started: queued.length, resumed: resumed.length },
+  })
 }
 
 /**

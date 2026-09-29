@@ -69,15 +69,26 @@ export interface DrainResult {
  * Called after a mutation (through `next/server`'s `after`, so the user is not
  * made to wait for an email) and by the cron route, which is the safety net for
  * anything the in-request drain missed.
+ *
+ * `organizationId` narrows the sweep to one tenant. Unused in production, where
+ * draining everything is correct, but it is what lets an integration suite
+ * drain only its own events while other suites share the database.
  */
-export async function drainOutbox({ limit = 50 } = {}): Promise<DrainResult> {
+export async function drainOutbox({
+  limit = 50,
+  organizationId,
+}: { limit?: number; organizationId?: string } = {}): Promise<DrainResult> {
   const db = getSystemDb()
   const result: DrainResult = { processed: 0, delivered: 0, failed: 0 }
 
   if (SUBSCRIBERS.size === 0) return result
 
   const events = await db.outboxEvent.findMany({
-    where: { status: { in: ['PENDING', 'FAILED'] }, attempts: { lt: MAX_ATTEMPTS } },
+    where: {
+      status: { in: ['PENDING', 'FAILED'] },
+      attempts: { lt: MAX_ATTEMPTS },
+      ...(organizationId ? { organizationId } : {}),
+    },
     orderBy: { occurredAt: 'asc' },
     take: limit,
     select: {

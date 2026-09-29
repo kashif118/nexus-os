@@ -5,6 +5,7 @@ import { useActionState, useEffect, useState } from 'react'
 
 import { Field } from '@/components/forms/field'
 import { SubmitButton } from '@/components/forms/submit-button'
+import { useCreatedRedirect } from '@/components/forms/use-created-redirect'
 import { Alert } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/select'
@@ -38,7 +39,6 @@ export function CreateReportForm({
   templates: TemplateSummary[]
   canSchedule: boolean
 }) {
-  const router = useRouter()
   const [state, formAction] = useActionState<FormState, FormData>(
     createReportAction.bind(null, orgSlug),
     null,
@@ -46,11 +46,7 @@ export function CreateReportForm({
   const [templateKey, setTemplateKey] = useState(templates[0]?.key ?? '')
 
   const fields = state && !state.ok ? state.error.fields : undefined
-  const createdId = state?.ok ? state.data.id : undefined
-
-  useEffect(() => {
-    if (createdId) router.push(`/${orgSlug}/reports/${createdId}`)
-  }, [createdId, orgSlug, router])
+  useCreatedRedirect(state, `/${orgSlug}/reports`)
 
   const selected = templates.find((template) => template.key === templateKey)
 

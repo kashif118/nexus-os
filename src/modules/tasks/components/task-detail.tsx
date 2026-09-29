@@ -4,6 +4,7 @@ import { useActionState } from 'react'
 
 import { Field } from '@/components/forms/field'
 import { SubmitButton } from '@/components/forms/submit-button'
+import { useCreatedRedirect } from '@/components/forms/use-created-redirect'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -91,6 +92,7 @@ export function TaskForm({
     : createTaskAction.bind(null, orgSlug)
 
   const [state, formAction] = useActionState<FormState, FormData>(action, null)
+  useCreatedRedirect(state, `/${orgSlug}/tasks`)
   const fields = state && !state.ok ? state.error.fields : undefined
   const formError = state && !state.ok && !state.error.fields ? state.error.message : null
 

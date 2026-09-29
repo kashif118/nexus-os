@@ -43,6 +43,15 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['src/kernel/**', 'src/lib/**', 'src/modules/**'],
+      /*
+       * React components and Server Actions are excluded, not because they do
+       * not matter, but because Vitest does not instrument the Next.js server
+       * that runs them. They are covered by the 43 Playwright journeys, and
+       * counting them here as uncovered would make the figure say less, not
+       * more. Everything that decides something — services, repositories,
+       * money, authorization, the workflow engine — is in scope.
+       */
+      exclude: ['**/components/**', '**/*.tsx', '**/__tests__/**', '**/*.d.ts'],
     },
   },
 })

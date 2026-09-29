@@ -95,8 +95,7 @@ test.describe('document downloads', () => {
     const id = await uploadPdf(owner.page, owner.slug, 'private.pdf', 'ORGANIZATION')
 
     const anonymous = await browser.newContext()
-    const response = await anonymous
-      .request.get(`/api/orgs/${owner.slug}/documents/${id}/download`)
+    const response = await anonymous.request.get(`/api/orgs/${owner.slug}/documents/${id}/download`)
 
     // 401 and JSON, not a redirect to an HTML sign-in page: a fetch follows a
     // redirect and would otherwise report a 200 for a request that failed.

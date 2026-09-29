@@ -5,6 +5,7 @@ import { useActionState, useEffect } from 'react'
 
 import { Field } from '@/components/forms/field'
 import { SubmitButton } from '@/components/forms/submit-button'
+import { useCreatedRedirect } from '@/components/forms/use-created-redirect'
 import { Alert } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/select'
@@ -26,17 +27,12 @@ export function CreateWorkflowForm({
   orgSlug: string
   triggers: Array<{ type: string; label: string; description: string }>
 }) {
-  const router = useRouter()
   const [state, formAction] = useActionState<FormState, FormData>(
     createWorkflowAction.bind(null, orgSlug),
     null,
   )
   const fields = state && !state.ok ? state.error.fields : undefined
-  const createdId = state?.ok ? state.data.id : undefined
-
-  useEffect(() => {
-    if (createdId) router.push(`/${orgSlug}/workflows/${createdId}`)
-  }, [createdId, orgSlug, router])
+  useCreatedRedirect(state, `/${orgSlug}/workflows`)
 
   return (
     <form action={formAction} className="space-y-3" noValidate>

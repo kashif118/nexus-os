@@ -4,6 +4,7 @@ import { useActionState } from 'react'
 
 import { Field } from '@/components/forms/field'
 import { SubmitButton } from '@/components/forms/submit-button'
+import { useCreatedRedirect } from '@/components/forms/use-created-redirect'
 import { Alert } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/select'
@@ -106,6 +107,7 @@ export function CompanyForm({
 
   const [state, formAction] = useActionState<FormState, FormData>(action, null)
   const { fields, formError, success } = useFormFields(state)
+  useCreatedRedirect(state, `/${orgSlug}/crm/companies`)
 
   return (
     <form action={formAction} className="space-y-4" noValidate>
@@ -195,6 +197,7 @@ export function ContactForm({
 
   const [state, formAction] = useActionState<FormState, FormData>(action, null)
   const { fields, formError, success } = useFormFields(state)
+  useCreatedRedirect(state, `/${orgSlug}/crm/contacts`)
 
   return (
     <form action={formAction} className="space-y-4" noValidate>
@@ -293,6 +296,7 @@ export function LeadForm({
 
   const [state, formAction] = useActionState<FormState, FormData>(action, null)
   const { fields, formError, success } = useFormFields(state)
+  useCreatedRedirect(state, `/${orgSlug}/crm/leads`)
 
   return (
     <form action={formAction} className="space-y-4" noValidate>
@@ -393,6 +397,7 @@ export function DealForm({
 
   const [state, formAction] = useActionState<FormState, FormData>(action, null)
   const { fields, formError, success } = useFormFields(state)
+  useCreatedRedirect(state, `/${orgSlug}/crm/deals`)
 
   const pipeline = pipelines.find((entry) => entry.id === (deal?.pipelineId ?? pipelines[0]?.id))
 

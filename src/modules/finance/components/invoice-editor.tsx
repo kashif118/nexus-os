@@ -1,11 +1,11 @@
 'use client'
 
 import { Plus, Trash2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useActionState, useEffect, useMemo, useState } from 'react'
+import { useActionState, useMemo, useState } from 'react'
 
 import { Field } from '@/components/forms/field'
 import { SubmitButton } from '@/components/forms/submit-button'
+import { useCreatedRedirect } from '@/components/forms/use-created-redirect'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -81,13 +81,9 @@ export function InvoiceEditor({
     : createInvoiceAction.bind(null, orgSlug)
 
   const [state, formAction] = useActionState<FormState, FormData>(action, null)
-  const router = useRouter()
 
   // A newly created draft opens on its own page, where it can be issued.
-  const createdId = !invoice && state?.ok ? state.data.id : undefined
-  useEffect(() => {
-    if (createdId) router.push(`/${orgSlug}/finance/invoices/${createdId}`)
-  }, [createdId, orgSlug, router])
+  useCreatedRedirect(state, `/${orgSlug}/finance/invoices`)
 
   const [lines, setLines] = useState<LineDraft[]>(() =>
     invoice && invoice.items.length > 0

@@ -98,6 +98,21 @@ async function seedMember(orgId: string, key: string, roleKey: string) {
 
 const base = { status: 'BACKLOG', priority: 'MEDIUM' }
 
+/**
+ * Lift the plan limits for this suite.
+ *
+ * These tests exercise breadth — many projects, many members — rather than
+ * entitlements, and the free tier is deliberately small. Saying so here keeps
+ * the limit real everywhere else instead of weakening it for everybody.
+ */
+async function grantUnlimitedPlan(organizationId: string): Promise<void> {
+  await getSystemDb().subscription.upsert({
+    where: { organizationId },
+    create: { organizationId, plan: 'business', status: 'ACTIVE' },
+    update: { plan: 'business', status: 'ACTIVE' },
+  })
+}
+
 describe.skipIf(!hasDatabase)('Tasks', () => {
   beforeAll(async () => {
     const db = getSystemDb()
@@ -114,6 +129,7 @@ describe.skipIf(!hasDatabase)('Tasks', () => {
         data: { name: slug, slug, createdById: user.id, currency: 'USD' },
         select: { id: true },
       })
+      await grantUnlimitedPlan(org.id)
       const membership = await db.membership.create({
         data: { organizationId: org.id, userId: user.id, status: 'ACTIVE' },
         select: { id: true },

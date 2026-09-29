@@ -1,4 +1,5 @@
 import { writeAuditLog } from '@/kernel/audit/write'
+import { requireCapacity } from '@/modules/billing/entitlements'
 import { daysFromNow, generateToken, hashToken, isExpired } from '@/kernel/auth/tokens'
 import { conflict, forbidden, notFound, validationError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
@@ -153,6 +154,10 @@ export async function inviteMember(
   meta: RequestMeta,
 ): Promise<void> {
   ctx.require('organization.members.invite')
+
+  // Checked BEFORE the invitation exists. Refusing at acceptance time would
+  // mean somebody was invited to an organization that cannot take them.
+  await requireCapacity(ctx, 'seats')
 
   // Scoped to this organization, so a member of another tenant is invisible.
   const members = await repository.listMembers(ctx)

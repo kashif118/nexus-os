@@ -100,6 +100,9 @@ model Organization {
   metricSnapshots         MetricSnapshot[]
   reports                 Report[]
   apiKeys                 ApiKey[]
+  subscription            Subscription?
+  usageCounters           UsageCounter[]
+  billingEvents           BillingEvent[]
   securityPolicy          SecurityPolicy?
   aiAgentConfigs          AIAgentConfig[]
   aiAgentRuns             AIAgentRun[]

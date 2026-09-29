@@ -1,0 +1,113 @@
+// NEXUS OS — subscriptions and entitlements (docs/DATA-MODEL.md §E.1.13).
+//
+// The rule this file is built around: **nothing here ever records a payment
+// this system did not observe.**
+//
+// `status` and `currentPeriodEnd` are only ever written from a verified
+// provider webhook, or by an organization owner in a deployment where billing
+// is handled outside the application entirely. There is no code path that marks
+// a subscription active because somebody pressed a button and a redirect came
+// back — that is how a product ends up giving away paid features, and it is
+// also how it ends up claiming a customer paid when they did not.
+//
+// Every provider identifier is nullable, because a deployment with no payment
+// provider is a supported state rather than a broken one.
+
+enum SubscriptionStatus {
+  /// No paid subscription. Free-tier limits apply.
+  NONE
+  /// Provider says it is paid and current.
+  ACTIVE
+  /// In a trial the provider is tracking.
+  TRIALING
+  /// Payment failed; access continues to the end of the period.
+  PAST_DUE
+  /// Cancelled, running to the end of the paid period.
+  CANCELING
+  /// Over, and back to free-tier limits.
+  CANCELED
+}
+
+enum UsageMetric {
+  SEATS
+  PROJECTS
+  STORAGE_BYTES
+  AI_TOKENS
+  WORKFLOW_RUNS
+}
+
+model Subscription {
+  id             String @id @default(cuid())
+  organizationId String @unique
+
+  /// Plan key from the code registry. An unknown key falls back to free.
+  plan   String             @default("free")
+  status SubscriptionStatus @default(NONE)
+
+  /// Provider identifiers. Null when no provider is configured.
+  providerCustomerId     String? @unique
+  providerSubscriptionId String? @unique
+
+  currentPeriodEnd DateTime?
+  cancelAt         DateTime?
+
+  /// Set when an owner changed the plan by hand, in a deployment with billing
+  /// handled elsewhere. Distinguishes "we saw a payment" from "somebody said
+  /// so", which matters when reconciling.
+  setManuallyById String?
+  setManuallyAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+/// Metered usage per organization and period, checked BEFORE a create.
+///
+/// A limit discovered after the fact is not a limit, so the entitlement service
+/// reads this — or counts live, for metrics cheap enough to count — before the
+/// operation, never after.
+model UsageCounter {
+  id             String @id @default(cuid())
+  organizationId String
+
+  metric      UsageMetric
+  periodStart DateTime
+
+  value BigInt @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, metric, periodStart])
+  @@index([organizationId, metric])
+}
+
+/// A provider event we have processed.
+///
+/// Webhooks are retried and can arrive out of order, so the provider's own
+/// event id is stored and a repeat is ignored. Without this, a retried
+/// "subscription.updated" could undo a later cancellation.
+model BillingEvent {
+  id             String  @id @default(cuid())
+  organizationId String?
+
+  /// The provider's event id. Unique, which is what makes processing idempotent.
+  providerEventId String @unique
+  type            String
+
+  payload Json
+
+  processedAt DateTime?
+  error       String?
+
+  receivedAt DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([type, receivedAt])
+}

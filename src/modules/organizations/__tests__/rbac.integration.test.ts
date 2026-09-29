@@ -97,6 +97,21 @@ const ROLE_KEYS = [
   'client',
 ]
 
+/**
+ * Lift the plan limits for this suite.
+ *
+ * These tests exercise breadth — many projects, many members — rather than
+ * entitlements, and the free tier is deliberately small. Saying so here keeps
+ * the limit real everywhere else instead of weakening it for everybody.
+ */
+async function grantUnlimitedPlan(organizationId: string): Promise<void> {
+  await getSystemDb().subscription.upsert({
+    where: { organizationId },
+    create: { organizationId, plan: 'business', status: 'ACTIVE' },
+    update: { plan: 'business', status: 'ACTIVE' },
+  })
+}
+
 describe.skipIf(!hasDatabase)('RBAC end to end', () => {
   beforeAll(async () => {
     const db = getSystemDb()
@@ -112,6 +127,7 @@ describe.skipIf(!hasDatabase)('RBAC end to end', () => {
       select: { id: true },
     })
     orgId = organization.id
+    await grantUnlimitedPlan(orgId)
 
     for (const key of ROLE_KEYS) {
       const user =

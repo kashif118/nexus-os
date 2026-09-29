@@ -92,6 +92,12 @@ export const NAVIGATION: NavDefinition[] = [
     section: 'Administration',
   },
   {
+    href: '/settings/billing',
+    label: 'Plan and usage',
+    icon: 'finance',
+    section: 'Administration',
+  },
+  {
     href: '/settings/security',
     label: 'Security',
     icon: 'roles',

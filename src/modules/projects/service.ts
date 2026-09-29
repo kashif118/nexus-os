@@ -1,4 +1,5 @@
 import { writeAuditLog } from '@/kernel/audit/write'
+import { requireCapacity } from '@/modules/billing/entitlements'
 import { emitEvent } from '@/kernel/events'
 import { scheduleDrain } from '@/modules/notifications/dispatch'
 import { conflict, forbidden, notFound, validationError } from '@/kernel/errors'
@@ -132,6 +133,8 @@ export async function createProject(
   meta: RequestMeta,
 ): Promise<{ id: string }> {
   ctx.require('project.create')
+
+  await requireCapacity(ctx, 'projects')
 
   const existing = await repository.findByKey(ctx, input.key)
   if (existing) {

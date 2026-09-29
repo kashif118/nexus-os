@@ -76,6 +76,20 @@ export const serverEnvSchema = z.object({
   ANTHROPIC_BASE_URL: z.url().optional(),
   /** Hard monthly ceiling in micros of USD. Default: 50 USD. */
   AI_MONTHLY_BUDGET_MICROS: z.coerce.number().int().positive().default(50_000_000),
+
+  /**
+   * Billing (Phase 20).
+   *
+   * `none` is a supported state, not a broken one: the application simply does
+   * not take payments, plan limits still apply, and an owner sets the plan by
+   * hand where billing is handled elsewhere. Nothing marks a subscription paid
+   * without a verified provider event.
+   */
+  BILLING_PROVIDER: z.enum(['none', 'stripe']).default('none'),
+  STRIPE_SECRET_KEY: z.string().min(10).optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().min(10).optional(),
+  STRIPE_PRICE_TEAM: z.string().min(1).optional(),
+  STRIPE_PRICE_BUSINESS: z.string().min(1).optional(),
 })
 
 /** Variables exposed to the browser. Must be `NEXT_PUBLIC_` prefixed. */
@@ -170,6 +184,59 @@ export function getDatabaseUrl(): string {
  */
 export function getCronSecret(): string | null {
   return getServerEnv().CRON_SECRET ?? null
+}
+
+/** Billing settings. `provider: 'none'` means the app takes no payments. */
+export interface BillingConfig {
+  provider: 'none' | 'stripe'
+  stripe: {
+    secretKey: string
+    webhookSecret: string
+    prices: Record<string, string>
+  } | null
+}
+
+/**
+ * Billing configuration.
+ *
+ * Selecting `stripe` without the keys throws, loudly, rather than falling back
+ * to "no billing" — a deployment that believes it is charging and is not is
+ * worse than one that knows it is not configured.
+ */
+export function getBillingConfig(): BillingConfig {
+  const env = getServerEnv()
+
+  if (env.BILLING_PROVIDER !== 'stripe') {
+    return { provider: 'none', stripe: null }
+  }
+
+  const missing = (
+    [
+      ['STRIPE_SECRET_KEY', env.STRIPE_SECRET_KEY],
+      ['STRIPE_WEBHOOK_SECRET', env.STRIPE_WEBHOOK_SECRET],
+    ] as const
+  )
+    .filter(([, value]) => !value)
+    .map(([name]) => name)
+
+  if (missing.length > 0) {
+    throw new Error(
+      `BILLING_PROVIDER=stripe requires: ${missing.join(', ')}. See .env.example and docs/OPERATIONS.md §P.4.`,
+    )
+  }
+
+  const prices: Record<string, string> = {}
+  if (env.STRIPE_PRICE_TEAM) prices.team = env.STRIPE_PRICE_TEAM
+  if (env.STRIPE_PRICE_BUSINESS) prices.business = env.STRIPE_PRICE_BUSINESS
+
+  return {
+    provider: 'stripe',
+    stripe: {
+      secretKey: env.STRIPE_SECRET_KEY!,
+      webhookSecret: env.STRIPE_WEBHOOK_SECRET!,
+      prices,
+    },
+  }
 }
 
 /** AI settings. `apiKey` null means generation is unavailable. */

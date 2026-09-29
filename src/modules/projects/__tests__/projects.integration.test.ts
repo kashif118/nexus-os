@@ -104,6 +104,21 @@ const baseProject = {
   visibility: 'ORGANIZATION',
 }
 
+/**
+ * Lift the plan limits for this suite.
+ *
+ * These tests exercise breadth — many projects, many members — rather than
+ * entitlements, and the free tier is deliberately small. Saying so here keeps
+ * the limit real everywhere else instead of weakening it for everybody.
+ */
+async function grantUnlimitedPlan(organizationId: string): Promise<void> {
+  await getSystemDb().subscription.upsert({
+    where: { organizationId },
+    create: { organizationId, plan: 'business', status: 'ACTIVE' },
+    update: { plan: 'business', status: 'ACTIVE' },
+  })
+}
+
 describe.skipIf(!hasDatabase)('Projects', () => {
   beforeAll(async () => {
     const db = getSystemDb()
@@ -128,6 +143,7 @@ describe.skipIf(!hasDatabase)('Projects', () => {
       state.memberships[key] = membership.id
       if (key === 'ownerA') state.orgA = org.id
       else state.orgB = org.id
+      await grantUnlimitedPlan(org.id)
     }
 
     await seedMember(state.orgA, 'manager', 'manager')

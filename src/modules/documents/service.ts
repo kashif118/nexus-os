@@ -1,4 +1,5 @@
 import { writeAuditLog } from '@/kernel/audit/write'
+import { requireCapacity } from '@/modules/billing/entitlements'
 import { emitEvent } from '@/kernel/events'
 import { scheduleDrain } from '@/modules/notifications/dispatch'
 import { conflict, forbidden, notFound, validationError } from '@/kernel/errors'
@@ -304,6 +305,10 @@ export async function uploadDocument(
   meta: RequestMeta,
 ): Promise<{ id: string; name: string }> {
   ctx.require('document.upload')
+
+  // The size is known before anything is written, so the limit is enforced
+  // before the bytes reach storage rather than after.
+  await requireCapacity(ctx, 'storageBytes', input.body.byteLength)
 
   const decision = inspectUpload({
     fileName: input.fileName,

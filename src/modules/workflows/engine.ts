@@ -123,12 +123,27 @@ function triggersForEventType(eventType: string): string[] {
 /* Execution                                                                   */
 /* -------------------------------------------------------------------------- */
 
-/** Execute every queued run, oldest first. */
-export async function runQueued(limit = 20): Promise<RunOutcome[]> {
+/** Execute specific runs. Used by the subscriber for the runs it just created. */
+export async function runSpecific(runIds: string[]): Promise<RunOutcome[]> {
+  const outcomes: RunOutcome[] = []
+  for (const runId of runIds) {
+    outcomes.push(await executeRun(runId))
+  }
+  return outcomes
+}
+
+/**
+ * Execute every queued run, oldest first.
+ *
+ * `organizationId` narrows the sweep to one tenant — unused in production,
+ * where sweeping everything is correct, and what lets an integration suite work
+ * on only its own runs while other suites share the database.
+ */
+export async function runQueued(limit = 20, organizationId?: string): Promise<RunOutcome[]> {
   const db = getSystemDb()
 
   const queued = await db.workflowRun.findMany({
-    where: { status: 'QUEUED' },
+    where: { status: 'QUEUED', ...(organizationId ? { organizationId } : {}) },
     orderBy: { startedAt: 'asc' },
     take: limit,
     select: { id: true },
@@ -142,11 +157,15 @@ export async function runQueued(limit = 20): Promise<RunOutcome[]> {
 }
 
 /** Resume runs whose delay has elapsed. */
-export async function resumeDueRuns(limit = 20): Promise<RunOutcome[]> {
+export async function resumeDueRuns(limit = 20, organizationId?: string): Promise<RunOutcome[]> {
   const db = getSystemDb()
 
   const due = await db.workflowRun.findMany({
-    where: { status: 'WAITING', resumeAt: { lte: new Date() } },
+    where: {
+      status: 'WAITING',
+      resumeAt: { lte: new Date() },
+      ...(organizationId ? { organizationId } : {}),
+    },
     orderBy: { resumeAt: 'asc' },
     take: limit,
     select: { id: true },

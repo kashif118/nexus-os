@@ -96,6 +96,11 @@ model Organization {
   budgets           Budget[]
 
   outboxEvents            OutboxEvent[]
+  aiExecutions            AIExecution[]
+  aiUsageCounters         AIUsageCounter[]
+  aiInsights              AIInsight[]
+  aiConversations         AIConversation[]
+  aiMessages              AIMessage[]
   workflows               Workflow[]
   workflowVersions        WorkflowVersion[]
   workflowRuns            WorkflowRun[]
@@ -159,6 +164,8 @@ model Membership {
   expensesApproved  Expense[]         @relation("ExpenseApprover")
 
   workflowsOwned          Workflow[]               @relation("WorkflowOwner")
+  insightsDismissed       AIInsight[]              @relation("InsightDismisser")
+  aiConversations         AIConversation[]         @relation("ConversationOwner")
   notificationsReceived   Notification[]           @relation("NotificationRecipient")
   notificationPreferences NotificationPreference[] @relation("PreferenceOwner")
 

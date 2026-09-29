@@ -1,0 +1,187 @@
+// NEXUS OS — AI (docs/AI-AND-AUTOMATION.md §J).
+//
+// Three things are recorded, and each exists because of a specific question
+// somebody will eventually ask:
+//
+//  1. **What did it do?** `AIExecution` is append-only: one row per model call
+//     or tool call, with the actor, the purpose, the tokens and the cost. When
+//     an agent does something surprising, the answer has to be a row, not a log
+//     file.
+//  2. **What is it costing?** `AIUsageCounter` aggregates per organization and
+//     period so a budget can be enforced BEFORE a call, not discovered on an
+//     invoice.
+//  3. **Where did that claim come from?** `AIInsight` carries its evidence as
+//     structured citations. An insight that cannot name the records it came
+//     from is an opinion, and this product does not present opinions as facts.
+
+enum AIExecutionKind {
+  GENERATE
+  STREAM
+  EMBED
+  TOOL
+}
+
+enum AIExecutionStatus {
+  SUCCEEDED
+  FAILED
+  REFUSED
+  BUDGET_EXCEEDED
+}
+
+enum AIInsightKind {
+  OVERDUE_INVOICES
+  STALLED_DEALS
+  AT_RISK_PROJECTS
+  WORKLOAD_IMBALANCE
+  EXPENSE_BACKLOG
+  UNBILLED_WORK
+}
+
+enum AIInsightSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+/// One model or tool invocation. Append-only: there is no update path.
+model AIExecution {
+  id             String @id @default(cuid())
+  organizationId String
+
+  kind   AIExecutionKind
+  status AIExecutionStatus
+
+  /// What it was for — "assistant", "summarize", "classify". Callers ask for a
+  /// purpose; the router picks the model.
+  purpose String
+  /// Resolved model id, recorded so a cost query does not depend on today's
+  /// routing table.
+  model   String?
+  provider String?
+
+  /// Tool calls only.
+  toolName String?
+
+  actorId       String?
+  actorType     String  @default("USER")
+  conversationId String?
+
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  /// Cost in MICROS of the organization's currency: integer arithmetic for
+  /// money, exactly as in finance.
+  costMicros       Int @default(0)
+
+  durationMs Int?
+  error      String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, purpose, createdAt])
+}
+
+/// Rolling usage per organization and period, checked before a call.
+model AIUsageCounter {
+  id             String @id @default(cuid())
+  organizationId String
+
+  /// First instant of the period, UTC. Monthly in this build.
+  periodStart DateTime
+
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  costMicros       Int @default(0)
+  calls            Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, periodStart])
+}
+
+/// A finding with its evidence. Computed from real rows, never invented.
+model AIInsight {
+  id             String @id @default(cuid())
+  organizationId String
+
+  kind     AIInsightKind
+  severity AIInsightSeverity @default(INFO)
+
+  title   String
+  /// Plain-language explanation, written from the computed numbers.
+  detail  String
+  /// The records this came from: [{ entityType, entityId, label }]. An insight
+  /// with no citations is not shown.
+  evidence Json
+
+  /// The permission a viewer needs. An insight about money is not for everyone.
+  requiredPermission String?
+
+  /// Set when a person says it is handled, so it stops being raised.
+  dismissedAt           DateTime?
+  dismissedByMembershipId String?
+
+  /// Regenerating replaces the previous computation for the same key.
+  dedupeKey String
+
+  computedAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dismissedBy  Membership?  @relation("InsightDismisser", fields: [dismissedByMembershipId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, dedupeKey])
+  @@index([organizationId, severity, computedAt])
+}
+
+/// An assistant conversation. Messages are separate rows so a long thread does
+/// not rewrite one growing document on every turn.
+model AIConversation {
+  id             String @id @default(cuid())
+  organizationId String
+
+  membershipId String
+  title        String?
+
+  /// What the conversation is pinned to, e.g. a project. Optional.
+  entityType String?
+  entityId   String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation("ConversationOwner", fields: [membershipId], references: [id], onDelete: Cascade)
+
+  messages AIMessage[]
+
+  @@index([organizationId, membershipId, updatedAt])
+}
+
+model AIMessage {
+  id             String @id @default(cuid())
+  organizationId String
+  conversationId String
+
+  role    String
+  content String
+
+  /// Tool calls and their results, for the transparency panel.
+  toolCalls Json?
+  /// Records the answer cited, so a claim can be checked.
+  citations Json?
+
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, conversationId, createdAt])
+}

@@ -63,6 +63,19 @@ export const serverEnvSchema = z.object({
    * to anyone who finds the URL.
    */
   CRON_SECRET: z.string().min(24).optional(),
+
+  /**
+   * AI provider (Phase 15).
+   *
+   * Absent means no assistant. That is a supported state, not a broken one:
+   * the insight engine, usage reporting and conversation history all work
+   * without a model, and the UI says plainly that generation is unavailable.
+   * Inventing a key to make a demo look complete would be worse than useless.
+   */
+  ANTHROPIC_API_KEY: z.string().min(20).optional(),
+  ANTHROPIC_BASE_URL: z.url().optional(),
+  /** Hard monthly ceiling in micros of USD. Default: 50 USD. */
+  AI_MONTHLY_BUDGET_MICROS: z.coerce.number().int().positive().default(50_000_000),
 })
 
 /** Variables exposed to the browser. Must be `NEXT_PUBLIC_` prefixed. */
@@ -157,6 +170,22 @@ export function getDatabaseUrl(): string {
  */
 export function getCronSecret(): string | null {
   return getServerEnv().CRON_SECRET ?? null
+}
+
+/** AI settings. `apiKey` null means generation is unavailable. */
+export interface AiConfig {
+  apiKey: string | null
+  baseUrl: string | undefined
+  monthlyBudgetMicros: number
+}
+
+export function getAiConfig(): AiConfig {
+  const env = getServerEnv()
+  return {
+    apiKey: env.ANTHROPIC_API_KEY ?? null,
+    baseUrl: env.ANTHROPIC_BASE_URL,
+    monthlyBudgetMicros: env.AI_MONTHLY_BUDGET_MICROS,
+  }
 }
 
 /** Resolved storage configuration, validated at the point of use. */

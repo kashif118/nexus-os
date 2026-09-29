@@ -1,6 +1,6 @@
 import { registerSubscriber, type DomainEvent, type Subscriber } from '@/kernel/events'
 
-import { runQueued, startRunsForEvent } from './engine'
+import { runSpecific, startRunsForEvent } from './engine'
 
 /**
  * The workflow subscriber.
@@ -14,6 +14,10 @@ import { runQueued, startRunsForEvent } from './engine'
  * A failure inside a run never propagates back to this subscriber: the run is
  * marked FAILED and the event is still delivered. One badly configured workflow
  * must not stop notifications for everyone.
+ *
+ * It executes exactly the runs it created rather than sweeping the queue: a
+ * sweep would be doing another tenant's work on this tenant's request, and
+ * bounded by a limit that has nothing to do with this event.
  */
 export const workflowSubscriber: Subscriber = {
   name: 'workflows',
@@ -31,7 +35,7 @@ export const workflowSubscriber: Subscriber = {
     if (runIds.length === 0) return
 
     try {
-      await runQueued(runIds.length)
+      await runSpecific(runIds)
     } catch (error) {
       // The runs stay QUEUED and the sweep retries them.
       console.error('[workflows] run execution failed', error)

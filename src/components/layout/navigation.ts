@@ -56,6 +56,12 @@ export const NAVIGATION: NavDefinition[] = [
     requires: ['crm.deal.read', 'crm.lead.read', 'crm.company.read', 'crm.contact.read'],
   },
   {
+    href: '/intelligence',
+    label: 'Intelligence',
+    icon: 'ai',
+    requires: ['ai.use'],
+  },
+  {
     href: '/workflows',
     label: 'Workflows',
     icon: 'workflows',

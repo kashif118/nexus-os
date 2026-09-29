@@ -119,6 +119,13 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set<string>([
   'NotificationPreference',
   'ActivityLog',
 
+  // AI
+  'AIExecution',
+  'AIUsageCounter',
+  'AIInsight',
+  'AIConversation',
+  'AIMessage',
+
   // Workflows
   'Workflow',
   'WorkflowVersion',

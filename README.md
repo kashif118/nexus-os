@@ -35,7 +35,7 @@ and the record an agent is allowed to read only if you are.
   `organizationId`, and a Prisma client extension injects it into every query — so forgetting
   a `where` clause returns your own rows rather than somebody else's. A client-supplied
   organization id that does not match the context throws rather than being silently rewritten.
-  A generated matrix tests read, count, update and delete against all **57** tenant tables, and
+  A generated matrix tests read, count, update and delete against all **66** tenant tables, and
   a schema-parsing test fails if a new tenant table is not registered.
 - **Authorization is one function.** 109 permissions, 7 system roles, per-resource grants, and
   one rule that makes external access safe: a **denial beats any grant, including the owner's**.

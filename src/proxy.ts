@@ -178,9 +178,18 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Everything except Next internals and static assets. Keeping the matcher
-     * narrow keeps middleware off the hot path for assets.
+     * Everything except Next internals, static assets, and the platform's own
+     * `_vercel` namespace. Keeping the matcher narrow keeps middleware off the
+     * hot path for assets.
+     *
+     * `_vercel` is excluded because it is not ours. Web Analytics injects
+     * `/_vercel/insights/script.js` and beacons to `/_vercel/insights/view`;
+     * both are platform endpoints, neither carries a session cookie, and
+     * without this exclusion the signed-out branch below answers them with a
+     * 307 to /sign-in — verified locally, where the analytics script was
+     * redirected instead of served. Speed Insights uses the same namespace and
+     * would break identically.
      */
-    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)',
+    '/((?!_next/static|_next/image|_vercel|favicon.ico|robots.txt|sitemap.xml).*)',
   ],
 }

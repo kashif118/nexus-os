@@ -357,6 +357,8 @@ list below is as it stood before the hardening pass; **§25 records what changed
 
 - ~~No error-reporting service.~~ **Addressed in §25** — a reporter now covers server, API and
   browser errors. It has never delivered an envelope to a live DSN.
+- **Vercel Web Analytics is mounted** — page views only, reporting only when deployed on
+  Vercel, inert locally. It is not application monitoring and does not change anything below.
 - No alerting and no uptime monitoring. `/api/health` exists to be polled and `docs/RUNBOOK.md`
   §1 says exactly how to configure it — but nothing polls it and no alert rule exists anywhere.
   **This is configuration you must do.**

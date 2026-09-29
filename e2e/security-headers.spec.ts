@@ -62,8 +62,27 @@ test.describe('security headers', () => {
   test('the application runs without violating its own policy', async ({ page }) => {
     const violations: string[] = []
 
+    /*
+     * One narrow exemption, and it is deliberately narrow.
+     *
+     * Vercel Web Analytics injects `/_vercel/insights/script.js`, which the
+     * PLATFORM serves in production. Running a production build locally there
+     * is no platform, so that path 404s and Next answers `text/plain` — and
+     * `X-Content-Type-Options: nosniff` then correctly refuses to execute a
+     * 404 page as JavaScript. That is two security controls working, not a
+     * policy violation, and it cannot happen on Vercel.
+     *
+     * The exemption requires BOTH the `_vercel/insights` path AND a MIME-type
+     * complaint. A genuine CSP block of that same script reads "violates the
+     * following Content Security Policy directive" and still fails this test,
+     * as does any refusal anywhere else in the application.
+     */
+    const isLocalMimeArtefact = (text: string) =>
+      /_vercel\/insights/.test(text) && /MIME type/i.test(text)
+
     page.on('console', (message) => {
       const text = message.text()
+      if (isLocalMimeArtefact(text)) return
       if (/content security policy|refused to (load|execute|apply)/i.test(text)) {
         violations.push(text)
       }

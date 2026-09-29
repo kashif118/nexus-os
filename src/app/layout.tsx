@@ -1,3 +1,4 @@
+import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { headers } from 'next/headers'
@@ -57,6 +58,21 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           {children}
           <Toaster />
           <ClientErrorReporter />
+          {/*
+            Vercel Web Analytics. Reports only when deployed on Vercel; inert
+            anywhere else, so local development and CI send nothing.
+
+            It takes no `nonce` prop, which would normally be fatal under this
+            application's `script-src 'self' 'nonce-…' 'strict-dynamic'` policy.
+            It works because it injects through `document.createElement`, and
+            propagating trust from an already-trusted script to one it inserts
+            via the DOM API is exactly what `strict-dynamic` is for. An
+            un-nonced tag in the initial HTML would be blocked; this is not one.
+
+            Asserted by `e2e/security-headers.spec.ts`, which fails on any
+            CSP violation the browser reports.
+          */}
+          <Analytics />
         </ThemeProvider>
       </body>
     </html>

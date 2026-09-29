@@ -365,6 +365,12 @@ network path is not exercised, and the first real call will be the first real ca
 - **No nightly rollups.** `MetricSnapshot` exists in the schema; nothing writes to it on a
   schedule. Analytics computes live, which is correct at the volumes this is tested at and
   will need revisiting well before a tenant has millions of rows.
+- **Vercel Web Analytics is mounted** (`@vercel/analytics`, root layout). It is page-view
+  analytics only, reports solely when deployed on Vercel, and is inert locally and in CI. It
+  is NOT application monitoring: it says nothing about errors, latency or whether the cron
+  ran. Requires no CSP change — it injects via `createElement`, which `strict-dynamic`
+  permits, verified by an E2E probe. `_vercel` is excluded from the proxy matcher so the
+  platform namespace is not redirected to sign-in.
 - **No uptime monitor and no alerting.** `/api/health` exists to be polled and
   `docs/RUNBOOK.md` §1 says exactly how — but nothing in this repository polls it, and no
   alert rule exists anywhere. This is configuration you must do.

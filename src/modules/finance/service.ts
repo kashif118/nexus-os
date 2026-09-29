@@ -1,7 +1,10 @@
 import { writeAuditLog } from '@/kernel/audit/write'
+import { emitEvent } from '@/kernel/events'
+import { scheduleDrain } from '@/modules/notifications/dispatch'
 import { conflict, forbidden, notFound, validationError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { toPageResult, type ListParams } from '@/kernel/validation/list-params'
+import { formatMoney } from '@/lib/money'
 
 import { balanceOf, calculateInvoice, deriveStatus, type LineInput } from './calculate'
 import * as repository from './repository'
@@ -339,6 +342,24 @@ export async function recordPayment(
     paidAt: amountPaidMinor >= invoice.totalMinor ? new Date() : null,
   })
 
+  // Settled in full: this is news, a part payment is not.
+  if (amountPaidMinor >= invoice.totalMinor) {
+    await emitEvent({
+      type: 'invoice.paid',
+      organizationId: ctx.orgId,
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      actorId: ctx.userId,
+      payload: {
+        actorName: ctx.user.name,
+        actorMembershipId: ctx.membershipId,
+        number: invoice.number,
+        amount: formatMoney(invoice.totalMinor, invoice.currency),
+      },
+    })
+    scheduleDrain()
+  }
+
   await writeAuditLog({
     action: 'finance.payment.recorded',
     entityType: 'Invoice',
@@ -505,6 +526,23 @@ export async function decideExpense(
     decisionNote: input.note ?? null,
   })
 
+  await emitEvent({
+    type: 'expense.decided',
+    organizationId: ctx.orgId,
+    entityType: 'Expense',
+    entityId: input.expenseId,
+    actorId: ctx.userId,
+    payload: {
+      actorName: ctx.user.name,
+      actorMembershipId: ctx.membershipId,
+      submittedByMembershipId: expense.submittedByMembershipId,
+      decision: input.approve ? 'APPROVED' : 'REJECTED',
+      note: input.note ?? '',
+      amount: formatMoney(expense.amountMinor + expense.taxMinor, expense.currency),
+    },
+  })
+  scheduleDrain()
+
   await writeAuditLog({
     action: input.approve ? 'finance.expense.approved' : 'finance.expense.rejected',
     entityType: 'Expense',
@@ -528,6 +566,20 @@ export async function submitExpense(ctx: Ctx, id: string, meta: RequestMeta): Pr
   if (expense.status !== 'DRAFT') throw conflict('That expense has already been submitted.')
 
   await repository.updateExpense(ctx, id, { status: 'SUBMITTED' })
+
+  await emitEvent({
+    type: 'expense.submitted',
+    organizationId: ctx.orgId,
+    entityType: 'Expense',
+    entityId: id,
+    actorId: ctx.userId,
+    payload: {
+      actorName: ctx.user.name,
+      actorMembershipId: ctx.membershipId,
+      amount: formatMoney(expense.amountMinor + expense.taxMinor, expense.currency),
+    },
+  })
+  scheduleDrain()
 
   await writeAuditLog({
     action: 'finance.expense.submitted',

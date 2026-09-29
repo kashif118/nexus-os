@@ -151,7 +151,10 @@ export async function findProject(ctx: Ctx, id: string, scope: 'all' | 'own') {
 
 /** Existence check that ignores visibility, for uniqueness and link validation. */
 export async function projectExists(ctx: Ctx, id: string) {
-  return ctx.db.project.findFirst({ where: { id, ...live }, select: { id: true, key: true } })
+  return ctx.db.project.findFirst({
+    where: { id, ...live },
+    select: { id: true, key: true, name: true },
+  })
 }
 
 export async function findByKey(ctx: Ctx, key: string) {

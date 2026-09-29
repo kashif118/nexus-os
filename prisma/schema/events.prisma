@@ -1,0 +1,169 @@
+// NEXUS OS — events, notifications and the activity feed
+// (docs/DATA-MODEL.md §E.1.11, docs/AI-AND-AUTOMATION.md §L).
+//
+// The shape here is a transactional outbox, and the reason is worth stating.
+// A write that both changes a record and notifies someone has two failure
+// modes: notify without the change (a lie) or change without the notification
+// (a silence). Writing the EVENT in the same transaction as the change removes
+// both — either they are both committed or neither is — and a separate drain
+// turns committed events into notifications, emails and index updates.
+//
+// `OutboxDelivery` makes that drain idempotent per subscriber: the same event
+// delivered twice to the notifier does not produce two notifications, and a
+// subscriber that fails does not hold up the others.
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED
+  FAILED
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+/// A domain event, written in the same transaction as the change it describes.
+model OutboxEvent {
+  id             String @id @default(cuid())
+  organizationId String
+
+  /// Dotted event name, e.g. "task.assigned". The registry in code is the
+  /// source of truth for which names exist.
+  type String
+
+  actorId   String?
+  actorType String  @default("USER")
+
+  entityType String
+  entityId   String
+
+  /// Everything a subscriber needs, captured at emit time. A subscriber that
+  /// re-reads the entity would see a later state than the event describes.
+  payload Json
+
+  occurredAt  DateTime @default(now())
+  processedAt DateTime?
+  attempts    Int          @default(0)
+  status      OutboxStatus @default(PENDING)
+  lastError   String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  deliveries OutboxDelivery[]
+
+  @@index([status, occurredAt])
+  @@index([organizationId, type, occurredAt])
+}
+
+/// One subscriber's attempt at one event. The unique pair is what makes the
+/// fan-out idempotent.
+model OutboxDelivery {
+  id      String @id @default(cuid())
+  eventId String
+
+  subscriber String
+  status     DeliveryStatus @default(PENDING)
+  attempts   Int            @default(0)
+  lastError  String?
+
+  createdAt   DateTime  @default(now())
+  deliveredAt DateTime?
+
+  event OutboxEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, subscriber])
+  @@index([status])
+}
+
+/// An in-app notification for one member.
+model Notification {
+  id             String @id @default(cuid())
+  organizationId String
+
+  recipientMembershipId String
+
+  type  String
+  title String
+  body  String?
+
+  entityType String?
+  entityId   String?
+  /// Where clicking it should go, resolved at creation so the list needs no
+  /// per-type logic.
+  href       String?
+
+  actorId String?
+
+  priority NotificationPriority @default(NORMAL)
+  /// Channels this notification was actually delivered on, e.g. ["IN_APP"].
+  channels String[]             @default([])
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipient    Membership   @relation("NotificationRecipient", fields: [recipientMembershipId], references: [id], onDelete: Cascade)
+
+  @@index([recipientMembershipId, readAt, createdAt])
+  @@index([organizationId, createdAt])
+}
+
+/// Per-member, per-event-type delivery preferences. Absent means the default
+/// for that event type, which is defined in code — a row is written only when
+/// someone changes something.
+model NotificationPreference {
+  id             String @id @default(cuid())
+  organizationId String
+
+  membershipId String
+  eventType    String
+
+  inApp  Boolean @default(true)
+  email  Boolean @default(false)
+  digest Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation("PreferenceOwner", fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, eventType])
+  @@index([organizationId, membershipId])
+}
+
+/// The user-facing activity feed.
+///
+/// Deliberately separate from `AuditLog`: the audit log is a security record
+/// that must never be filtered for readability, while this is a product surface
+/// that shows what happened on a record in words a person would use.
+model ActivityLog {
+  id             String @id @default(cuid())
+  organizationId String
+
+  entityType String
+  entityId   String
+
+  actorId   String?
+  actorType String  @default("USER")
+
+  /// Past-tense verb: "created", "assigned", "commented".
+  verb    String
+  summary String?
+  changes Json?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, entityType, entityId, createdAt])
+  @@index([organizationId, createdAt])
+}

@@ -4,6 +4,7 @@ import { requireCtxPage } from '@/kernel/tenancy/ctx'
 import { listMyOrganizations } from '@/modules/organizations/queries'
 import { AppShell } from '@/components/layout/app-shell'
 import { commandsFor, navigationFor } from '@/components/layout/navigation'
+import { NotificationBell } from '@/modules/notifications/components/notification-bell'
 
 /**
  * The tenant guard (docs/PLATFORM.md §H.3, layer 1).
@@ -33,6 +34,7 @@ export default async function OrgLayout({
       organizations={organizations}
       navigation={navigationFor(ctx.can)}
       commands={commandsFor(ctx.orgSlug, ctx.can)}
+      notificationBell={<NotificationBell ctx={ctx} />}
     >
       {children}
     </AppShell>

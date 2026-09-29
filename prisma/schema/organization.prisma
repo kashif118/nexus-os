@@ -95,6 +95,11 @@ model Organization {
   expenses          Expense[]
   budgets           Budget[]
 
+  outboxEvents            OutboxEvent[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  activityLogs            ActivityLog[]
+
   folders          Folder[]
   documents        Document[]
   documentVersions DocumentVersion[]
@@ -148,6 +153,9 @@ model Membership {
   skills            MembershipSkill[]
   expensesSubmitted Expense[]         @relation("ExpenseSubmitter")
   expensesApproved  Expense[]         @relation("ExpenseApprover")
+
+  notificationsReceived   Notification[]           @relation("NotificationRecipient")
+  notificationPreferences NotificationPreference[] @relation("PreferenceOwner")
 
   foldersCreated    Folder[]          @relation("FolderCreator")
   documentsUploaded Document[]        @relation("DocumentUploader")

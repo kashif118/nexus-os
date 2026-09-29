@@ -54,6 +54,15 @@ export const serverEnvSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((value) => value === 'true'),
+
+  /**
+   * Shared secret for scheduled endpoints (Phase 13).
+   *
+   * Absent means scheduled endpoints refuse every request. That is the correct
+   * default: an open endpoint that drains a queue is a denial of service handed
+   * to anyone who finds the URL.
+   */
+  CRON_SECRET: z.string().min(24).optional(),
 })
 
 /** Variables exposed to the browser. Must be `NEXT_PUBLIC_` prefixed. */
@@ -138,6 +147,16 @@ export function getDatabaseUrl(): string {
     )
   }
   return url
+}
+
+/**
+ * The scheduled-task secret, or null when none is configured.
+ *
+ * Returned rather than thrown so a development machine can run without one; the
+ * endpoint itself refuses to work when it is absent.
+ */
+export function getCronSecret(): string | null {
+  return getServerEnv().CRON_SECRET ?? null
 }
 
 /** Resolved storage configuration, validated at the point of use. */

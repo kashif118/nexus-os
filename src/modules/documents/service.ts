@@ -1,4 +1,6 @@
 import { writeAuditLog } from '@/kernel/audit/write'
+import { emitEvent } from '@/kernel/events'
+import { scheduleDrain } from '@/modules/notifications/dispatch'
 import { conflict, forbidden, notFound, validationError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { toPageResult, type ListParams } from '@/kernel/validation/list-params'
@@ -580,6 +582,25 @@ export async function shareDocument(
     subjectId: input.subjectId,
     access: input.access,
   })
+
+  // Only a person can be told; a role or team grant reaches too many people to
+  // be worth a notification each, and the document appears in their list anyway.
+  if (input.subjectType === 'USER') {
+    await emitEvent({
+      type: 'document.shared',
+      organizationId: ctx.orgId,
+      entityType: 'Document',
+      entityId: input.documentId,
+      actorId: ctx.userId,
+      payload: {
+        actorName: ctx.user.name,
+        actorMembershipId: ctx.membershipId,
+        subjectMembershipIds: [input.subjectId],
+        name: document.name,
+      },
+    })
+    scheduleDrain()
+  }
 
   await writeAuditLog({
     action: 'document.shared',

@@ -1,4 +1,6 @@
 import { writeAuditLog } from '@/kernel/audit/write'
+import { emitEvent } from '@/kernel/events'
+import { scheduleDrain } from '@/modules/notifications/dispatch'
 import { conflict, forbidden, notFound, validationError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { toPageResult, type ListParams } from '@/kernel/validation/list-params'
@@ -318,6 +320,25 @@ export async function assignTask(
     ip: meta.ip,
     userAgent: meta.userAgent,
   })
+
+  // Unassigning notifies nobody; there is no news in "you no longer have this".
+  if (assigneeMembershipId && assigneeMembershipId !== ctx.membershipId) {
+    const task = await repository.taskExists(ctx, input.taskId)
+    await emitEvent({
+      type: 'task.assigned',
+      organizationId: ctx.orgId,
+      entityType: 'Task',
+      entityId: input.taskId,
+      actorId: ctx.userId,
+      payload: {
+        actorName: ctx.user.name,
+        actorMembershipId: ctx.membershipId,
+        assigneeMembershipId,
+        title: task?.title ?? 'a task',
+      },
+    })
+    scheduleDrain()
+  }
 }
 
 export async function deleteTask(ctx: Ctx, id: string, meta: RequestMeta): Promise<void> {
@@ -482,14 +503,54 @@ export async function addComment(
   const comment = await repository.addComment(ctx, input)
 
   const names = extractMentions(input.body)
+  let mentionedMembershipIds: string[] = []
+
   if (names.length > 0) {
     const members = await repository.resolveMentions(ctx, names)
-    await repository.recordMentions(
-      ctx,
-      comment.id,
-      members.map((member) => member.id),
-    )
+    mentionedMembershipIds = members.map((member) => member.id)
+    await repository.recordMentions(ctx, comment.id, mentionedMembershipIds)
   }
+
+  const excerpt = input.body.slice(0, 200)
+
+  if (mentionedMembershipIds.length > 0) {
+    await emitEvent({
+      type: 'task.mentioned',
+      organizationId: ctx.orgId,
+      entityType: 'Task',
+      entityId: input.taskId,
+      actorId: ctx.userId,
+      payload: {
+        actorName: ctx.user.name,
+        actorMembershipId: ctx.membershipId,
+        mentionedMembershipIds,
+        excerpt,
+      },
+    })
+  }
+
+  // The assignee hears about a comment even when they were not named — but not
+  // twice, because a mention already covers them and `planDelivery` collapses
+  // duplicates only within one event, not across two.
+  const assignee = task.assigneeMembershipId
+  if (assignee && assignee !== ctx.membershipId && !mentionedMembershipIds.includes(assignee)) {
+    await emitEvent({
+      type: 'task.commented',
+      organizationId: ctx.orgId,
+      entityType: 'Task',
+      entityId: input.taskId,
+      actorId: ctx.userId,
+      payload: {
+        actorName: ctx.user.name,
+        actorMembershipId: ctx.membershipId,
+        assigneeMembershipId: assignee,
+        title: task.title ?? 'a task',
+        excerpt,
+      },
+    })
+  }
+
+  scheduleDrain()
 
   await writeAuditLog({
     action: 'task.commented',

@@ -23,6 +23,7 @@ export function AppShell({
   organizations,
   navigation,
   commands,
+  notificationBell,
   children,
 }: {
   org: { slug: string; name: string; logoUrl: string | null }
@@ -30,6 +31,8 @@ export function AppShell({
   organizations: OrgSummary[]
   navigation: NavItem[]
   commands: PaletteCommand[]
+  /** Rendered in the header. Passed in so the shell needs no data access. */
+  notificationBell?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -58,6 +61,7 @@ export function AppShell({
               organizations={organizations}
               currentSlug={org.slug}
             />
+            {notificationBell}
             <UserMenu user={user} />
           </div>
         </header>

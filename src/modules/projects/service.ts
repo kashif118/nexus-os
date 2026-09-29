@@ -1,4 +1,6 @@
 import { writeAuditLog } from '@/kernel/audit/write'
+import { emitEvent } from '@/kernel/events'
+import { scheduleDrain } from '@/modules/notifications/dispatch'
 import { conflict, forbidden, notFound, validationError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { toPageResult, type ListParams } from '@/kernel/validation/list-params'
@@ -327,6 +329,23 @@ export async function addMember(
   if (!membershipId) throw validationError('Choose a member to add.')
 
   await repository.addMember(ctx, { ...input, membershipId })
+
+  if (membershipId !== ctx.membershipId) {
+    await emitEvent({
+      type: 'project.member.added',
+      organizationId: ctx.orgId,
+      entityType: 'Project',
+      entityId: input.projectId,
+      actorId: ctx.userId,
+      payload: {
+        actorName: ctx.user.name,
+        actorMembershipId: ctx.membershipId,
+        membershipId,
+        name: project.name,
+      },
+    })
+    scheduleDrain()
+  }
 
   await writeAuditLog({
     action: 'project.member_added',

@@ -219,7 +219,14 @@ export async function findTask(ctx: Ctx, id: string, scope: 'all' | 'own') {
 export async function taskExists(ctx: Ctx, id: string) {
   return ctx.db.task.findFirst({
     where: { id, ...live },
-    select: { id: true, projectId: true, status: true, number: true, title: true },
+    select: {
+      id: true,
+      projectId: true,
+      status: true,
+      number: true,
+      title: true,
+      assigneeMembershipId: true,
+    },
   })
 }
 

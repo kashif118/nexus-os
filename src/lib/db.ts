@@ -113,6 +113,12 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set<string>([
   'Expense',
   'Budget',
 
+  // Events, notifications and activity
+  'OutboxEvent',
+  'Notification',
+  'NotificationPreference',
+  'ActivityLog',
+
   // Documents
   'Folder',
   'Document',

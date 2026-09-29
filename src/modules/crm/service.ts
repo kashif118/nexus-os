@@ -1,4 +1,6 @@
 import { writeAuditLog } from '@/kernel/audit/write'
+import { emitEvent } from '@/kernel/events'
+import { scheduleDrain } from '@/modules/notifications/dispatch'
 import { conflict, notFound, validationError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import type { ListParams } from '@/kernel/validation/list-params'
@@ -635,6 +637,24 @@ export async function moveDeal(
     toStageId: stage.id,
     durationSeconds,
   })
+
+  const dealPayload = {
+    actorName: ctx.user.name,
+    actorMembershipId: ctx.membershipId,
+    ownerMembershipId: deal.ownerMembershipId ?? '',
+    title: deal.title,
+    stageName: stage.name,
+  }
+
+  await emitEvent({
+    type: status === 'WON' ? 'deal.won' : 'deal.stage.changed',
+    organizationId: ctx.orgId,
+    entityType: 'Deal',
+    entityId: deal.id,
+    actorId: ctx.userId,
+    payload: dealPayload,
+  })
+  scheduleDrain()
 
   await writeAuditLog({
     action: 'crm.deal.stage_changed',

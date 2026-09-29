@@ -1,0 +1,45 @@
+// NEXUS OS — reporting (docs/DATA-MODEL.md §E.1.12).
+//
+// A saved report is its PARAMETERS, not its output.
+//
+// Storing the rendered numbers would mean a report opened next week shows last
+// week's figures with no indication that they are stale — and would duplicate
+// data that the source tables already hold correctly. Storing the parameters
+// means "Revenue by month, last 12 months, all projects" is re-run whenever it
+// is opened, always against current data, and an export is a deterministic
+// function of (template, parameters, the data at this moment).
+//
+// `lastRunAt` records when it was last generated so a schedule can tell whether
+// it is due; it is not a claim about the freshness of what you are looking at.
+
+model Report {
+  id             String @id @default(cuid())
+  organizationId String
+
+  /// Template key from the code registry. An unknown key is not runnable.
+  template String
+  name     String
+
+  /// Validated against the template's own schema before it is stored.
+  parameters Json
+
+  /// A cron-like schedule, or null for on-demand only. Evaluated by the sweep.
+  schedule String?
+  /// Who receives it when it runs on a schedule.
+  recipientMembershipIds String[] @default([])
+
+  lastRunAt DateTime?
+  /// Set when a scheduled run fails, so a silent schedule is visible.
+  lastError String?
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, name])
+  @@index([organizationId, template])
+  @@index([schedule])
+}

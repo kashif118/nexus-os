@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { getCronSecret } from '@/kernel/config/env'
 import { runDrain } from '@/modules/notifications/dispatch'
+import { runDueReports } from '@/modules/reports/scheduler'
 import { resumeDueRuns, runQueued } from '@/modules/workflows/engine'
 
 /**
@@ -14,7 +15,7 @@ import { resumeDueRuns, runQueued } from '@/modules/workflows/engine'
  *
  * It also moves workflow runs along — a run suspended at a delay or an approval
  * deadline has nothing else to wake it, so without a scheduled call those runs
- * would wait forever.
+ * would wait forever — and generates any report whose schedule is due.
  *
  * Authentication is a shared secret in a header, compared in constant time.
  * It is NOT a session: a scheduler has no user, and giving one a session would
@@ -46,15 +47,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Not found.' }, { status: 404 })
   }
 
-  // Three sweeps, in order: deliver events, execute anything they queued, and
-  // wake runs whose delay or approval deadline has passed.
+  // Four sweeps, in order: deliver events, execute anything they queued, wake
+  // runs whose delay or approval deadline has passed, and generate any report
+  // whose schedule is due.
   const events = await runDrain(200)
   const queued = await runQueued(50)
   const resumed = await resumeDueRuns(50)
+  const reports = await runDueReports()
 
   return NextResponse.json({
     events,
     workflowRuns: { started: queued.length, resumed: resumed.length },
+    reports,
   })
 }
 

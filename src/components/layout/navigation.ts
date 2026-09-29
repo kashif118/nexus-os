@@ -62,6 +62,12 @@ export const NAVIGATION: NavDefinition[] = [
     requires: ['analytics.view.org', 'analytics.view.team', 'analytics.view.own'],
   },
   {
+    href: '/reports',
+    label: 'Reports',
+    icon: 'documents',
+    requires: ['report.view'],
+  },
+  {
     href: '/intelligence',
     label: 'Intelligence',
     icon: 'ai',

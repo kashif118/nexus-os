@@ -1,0 +1,43 @@
+/* ---------------------------------------------------------------------------
+ * Print
+ *
+ * "Save as PDF" is the browser's print dialogue, so print output is a real
+ * deliverable rather than an afterthought: no navigation, no interactive
+ * controls, black text on white, and tables that do not break across a row.
+ * This is the whole of the PDF story, and it is a better one than a bundled
+ * PDF library would give (docs/ROADMAP.md §U).
+ * ------------------------------------------------------------------------- */
+@media print {
+  :root {
+    --background: #ffffff;
+    --foreground: #000000;
+    --muted-foreground: #333333;
+  }
+
+  aside,
+  header.sticky,
+  nav {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  a[href]::after {
+    content: '';
+  }
+
+  table {
+    break-inside: auto;
+  }
+
+  tr,
+  figure {
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}

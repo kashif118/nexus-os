@@ -1,4 +1,5 @@
 import { registerWidgets, type WidgetDefinition } from './registry'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * Widgets the platform itself can answer today.
@@ -71,7 +72,7 @@ export async function loadWidgets(): Promise<void> {
       try {
         await load()
       } catch (error) {
-        console.error('[dashboard] failed to load module widgets', error)
+        log.error('dashboard.widgets.load.failed', { error })
       }
     }),
   )

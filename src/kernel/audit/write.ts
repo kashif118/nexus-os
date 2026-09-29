@@ -1,4 +1,5 @@
 import { getSystemDb, type Prisma } from '@/lib/db'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * Append-only audit writer (docs/OPERATIONS.md §N.1).
@@ -61,6 +62,6 @@ export async function writeAuditLog(input: AuditInput): Promise<void> {
       },
     })
   } catch (error) {
-    console.error('[audit] failed to write audit log', { action: input.action, error })
+    log.error('audit.write.failed', { action: input.action, error })
   }
 }

@@ -6,6 +6,7 @@ import { audienceFor } from './audience'
 import { channelLabels, planDelivery } from './delivery'
 import { renderEmail, renderNotification } from './render'
 import * as repository from './repository'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * The notification subscriber.
@@ -81,7 +82,7 @@ export const notificationSubscriber: Subscriber = {
           text: message.text,
         })
       } catch (error) {
-        console.error('[notifications] email failed', { to: entry.email, error })
+        log.error('notifications.email.failed', { membershipId: entry.membershipId, error })
       }
     }
   },

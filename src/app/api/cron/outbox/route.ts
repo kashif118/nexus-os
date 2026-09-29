@@ -28,6 +28,18 @@ import { resumeDueRuns, runQueued } from '@/modules/workflows/engine'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+/**
+ * Vercel's scheduler issues a GET, not a POST.
+ *
+ * Both are accepted, and both require the secret. A GET that changes things is
+ * not something to be pleased about, but the alternative is a cron entry that
+ * silently 405s forever — and "the drain never ran" is not a failure anybody
+ * notices until a week of notifications has not been sent.
+ */
+export async function GET(request: Request) {
+  return POST(request)
+}
+
 export async function POST(request: Request) {
   const secret = getCronSecret()
 

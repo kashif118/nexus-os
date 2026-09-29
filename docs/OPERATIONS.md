@@ -287,3 +287,93 @@ FEATURE_AI_AGENTS · FEATURE_WORKFLOWS · FEATURE_CLIENT_PORTAL
 `.env.example` is committed and kept in sync by a CI check that diffs it against the Zod
 schema. Secrets live only in Vercel project settings (per-environment) and a password
 manager; **no secret is ever committed, and no secret is ever `NEXT_PUBLIC_`**.
+
+---
+
+## Q. Deployment — as built
+
+Sections M–P describe the target architecture. This section describes what the repository
+actually contains, so that nobody reads a plan as a description. Where the two differ, this
+section is the truth.
+
+### Q.1 What is in place
+
+| Concern                 | As built                                                                                                                                                                                                 |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Security headers        | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-DNS-Prefetch-Control` from `next.config.ts`; HSTS in production builds only.                                    |
+| Content-Security-Policy | Nonce-based, minted per request in `src/proxy.ts`. `script-src` carries no `'unsafe-inline'`; `'unsafe-eval'` is development-only. Verified by an E2E test that fails on any browser-reported violation. |
+| Health check            | `GET /api/health` — runs `SELECT 1`, returns 200 or 503 and nothing else. Public, uncached, and deliberately uninformative on failure.                                                                   |
+| Scheduled work          | `POST` **and** `GET /api/cron/outbox`, authenticated by `CRON_SECRET` compared in constant time. `vercel.json` schedules it every five minutes.                                                          |
+| Logging                 | `src/kernel/observability/logger.ts` — one JSON object per line in production, readable in development, field names redacted against the same list the AI layer uses.                                    |
+| Crawlers                | `/robots.txt` disallows everything, alongside `robots: { index: false }` on the root layout.                                                                                                             |
+| Error boundaries        | `error.tsx`, `global-error.tsx`, `not-found.tsx`. A user sees a digest; the detail is in the server log under that digest.                                                                               |
+
+### Q.2 What is NOT in place
+
+Stated plainly, because the difference between "planned" and "present" is the difference
+between a runbook and a wish.
+
+- **No Sentry, and no error-reporting service of any kind.** Errors reach `stdout`. On Vercel
+  that means the function logs, which are retained for a limited window and have no alerting.
+- **No Redis and no cache layer.** Every figure is computed per request. The query budgets in
+  `src/lib/__tests__/query-budget.integration.test.ts` are what keeps that affordable.
+- **No nightly rollups.** `MetricSnapshot` exists in the schema; nothing writes to it on a
+  schedule. Analytics computes live, which is correct at the volumes this is tested at and
+  will need revisiting well before a tenant has millions of rows.
+- **No uptime monitor, no alerting, no dashboards.** `/api/health` exists to be polled; nothing
+  polls it.
+- **No backup or restore drill.** Neon PITR is a property of the database provider, not of this
+  repository, and it has not been exercised.
+- **No Postgres row-level security.** Tenant isolation is enforced by the scoped Prisma client
+  and proven by a generated matrix over all 57 tenant tables. RLS remains the defence-in-depth
+  layer that has not been added (§D12).
+- **No malware scanning on upload.** Documents record a `SKIPPED` scan status rather than
+  claiming a clean one.
+- **The Anthropic and Stripe adapters have never been run against the live services.** They are
+  written to the documented contracts and unit-tested against fixtures; the first real call
+  will be in whatever environment first sets the keys.
+
+### Q.3 Deploying to Vercel
+
+1. **Provision Postgres** (Neon, Supabase, or any Postgres 17). Take two connection strings:
+   the pooled one and the direct one. Migrations need the direct one; the pooler cannot run DDL
+   reliably.
+2. **Import the repository** into Vercel. The framework preset is Next.js; no build command
+   override is needed.
+3. **Set environment variables** for Production and Preview (§Q.4). `npm run check:env` lists
+   exactly what the schema requires, and the build fails at boot if anything required is absent —
+   which is the intended behaviour, not a fault to work around.
+4. **Run migrations** before the first deploy: `DIRECT_DATABASE_URL=... npm run db:deploy`.
+5. **Seed the permission catalogue:** `DATABASE_URL=... npm run db:seed`. It is idempotent and
+   safe to re-run after every deploy that adds permissions.
+6. **Deploy.** Then check `GET /api/health` returns 200.
+7. **Confirm the cron job** is registered (Vercel → Settings → Cron Jobs). Without `CRON_SECRET`
+   set, the endpoint answers 503 and no scheduled work happens.
+8. **If using Stripe:** point a webhook endpoint at `https://<domain>/api/webhooks/billing`,
+   subscribe to `customer.subscription.*` and `invoice.payment_*`, and put the signing secret in
+   `STRIPE_WEBHOOK_SECRET`. Until that is done, plans can only be set manually, and a manual set
+   is recorded as a manual decision with no paid period.
+
+### Q.4 Required environment variables
+
+Required in every environment:
+
+| Variable               | Purpose                                                          |
+| ---------------------- | ---------------------------------------------------------------- |
+| `DATABASE_URL`         | Pooled connection used at runtime.                               |
+| `DIRECT_DATABASE_URL`  | Direct connection, migrations only.                              |
+| `AUTH_SECRET`          | 32+ random bytes. Signs and verifies session material.           |
+| `NEXT_PUBLIC_APP_URL`  | Absolute origin. Used for links in email and for `metadataBase`. |
+| `NEXT_PUBLIC_APP_NAME` | Display name.                                                    |
+
+Optional, and each one turns a capability on rather than changing how an existing one behaves:
+
+| Variable                                      | Without it                                                                    |
+| --------------------------------------------- | ----------------------------------------------------------------------------- |
+| `CRON_SECRET`                                 | `/api/cron/outbox` answers 503; no scheduled drains, workflows or reports.    |
+| `ANTHROPIC_API_KEY` (+ `AI_PROVIDER`)         | The assistant says it is not configured. It does not invent answers.          |
+| `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` | No checkout; plans are set manually and recorded as manual.                   |
+| `SMTP_*` / email transport                    | Email is printed to the server log instead of sent. Sign-up still works.      |
+| Storage credentials                           | Documents use the local filesystem driver, which is unsuitable on serverless. |
+
+`npm run check:env` is the authority and runs in CI; this table is a description of it.

@@ -1,6 +1,7 @@
 import { getSystemDb } from '@/lib/db'
 
 import { isEventType, type EventType } from './catalogue'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * The outbox drain.
@@ -154,7 +155,7 @@ export async function drainOutbox({
             lastError: error instanceof Error ? error.message.slice(0, 500) : 'Unknown error',
           },
         })
-        console.error('[events] subscriber failed', {
+        log.error('events.subscriber.failed', {
           subscriber: subscriber.name,
           type: event.type,
           error,

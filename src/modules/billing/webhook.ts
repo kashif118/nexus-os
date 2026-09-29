@@ -1,5 +1,6 @@
 import { applyProviderEvent } from './service'
 import { getPaymentProvider } from './provider'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * The webhook boundary.
@@ -33,7 +34,7 @@ export async function handleWebhook(
     const result = await applyProviderEvent(event)
     return { status: 200, body: { received: true, applied: result.applied } }
   } catch (error) {
-    console.error('[billing] webhook failed', { type: event.type, error })
+    log.error('billing.webhook.failed', { type: event.type, error })
     // 500 so the provider retries; the event id makes the retry idempotent.
     return { status: 500, body: { error: 'Could not process the event.' } }
   }

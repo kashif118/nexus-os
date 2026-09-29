@@ -5,6 +5,7 @@ import { isAppError } from '@/kernel/errors'
 import { requireCtx } from '@/kernel/tenancy/ctx'
 import { MAX_UPLOAD_BYTES } from '@/lib/storage'
 import { addVersion } from '@/modules/documents/binary'
+import { log } from '@/kernel/observability/logger'
 
 /** Upload a replacement revision. The previous bytes stay retrievable. */
 export const runtime = 'nodejs'
@@ -52,7 +53,7 @@ export async function POST(
       return NextResponse.json({ error: 'Not found.' }, { status: 404 })
     }
 
-    console.error('[documents] version upload failed', error)
+    log.error('documents.version.failed', { error })
     return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 })
   }
 }

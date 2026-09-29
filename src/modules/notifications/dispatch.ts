@@ -1,6 +1,7 @@
 import { after } from 'next/server'
 
 import { drainOutbox } from '@/kernel/events'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * Subscriber registration and scheduling.
@@ -28,7 +29,7 @@ export async function loadSubscribers(): Promise<void> {
       try {
         await load()
       } catch (error) {
-        console.error('[events] failed to load a subscriber module', error)
+        log.error('events.subscriber.load.failed', { error })
       }
     }),
   )
@@ -51,7 +52,7 @@ export function scheduleDrain(): void {
     try {
       await runDrain()
     } catch (error) {
-      console.error('[events] drain failed', error)
+      log.error('events.drain.failed', { error })
     }
   }
 

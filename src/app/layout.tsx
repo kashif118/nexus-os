@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
+import { headers } from 'next/headers'
 import type { ReactNode } from 'react'
 
 import { Toaster } from '@/components/feedback/toaster'
@@ -28,11 +29,25 @@ export const viewport: Viewport = {
   ],
 }
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+/**
+ * The root layout.
+ *
+ * It reads the request headers for the CSP nonce, which makes it dynamic. That
+ * is a deliberate trade: next-themes writes an inline script to set the theme
+ * before first paint, and under a nonce-based policy an un-nonced inline script
+ * is blocked — losing the script means a flash of the wrong theme on every load.
+ * Every page in the product is already rendered per request because every page
+ * is tenant data, so the only page this costs anything is the signed-out
+ * landing page.
+ */
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const nonce = (await headers()).get('x-nonce') ?? undefined
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans`}>
         <ThemeProvider
+          nonce={nonce}
           attribute="class"
           defaultTheme="system"
           enableSystem

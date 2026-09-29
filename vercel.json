@@ -1,0 +1,20 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/outbox",
+      "schedule": "*/5 * * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/cron/outbox/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/webhooks/billing/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/orgs/[orgSlug]/documents/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

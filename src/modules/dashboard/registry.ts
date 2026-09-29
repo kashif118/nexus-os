@@ -1,5 +1,6 @@
 import type { Permission } from '@/kernel/authz/catalogue'
 import type { Ctx } from '@/kernel/tenancy/ctx'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * The Command Center widget registry (docs/ARCHITECTURE.md §A.2).
@@ -124,7 +125,7 @@ export async function resolveWidgets(
       try {
         return { definition, value: await definition.resolve(ctx), error: null }
       } catch (error) {
-        console.error(`[dashboard] widget "${definition.id}" failed`, error)
+        log.error('dashboard.widget.failed', { widget: definition.id, error })
         return { definition, value: null, error: 'This metric could not be loaded.' }
       }
     }),

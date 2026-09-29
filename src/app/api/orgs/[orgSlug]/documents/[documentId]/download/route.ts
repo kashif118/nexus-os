@@ -4,6 +4,7 @@ import { isAppError } from '@/kernel/errors'
 import { requireCtx } from '@/kernel/tenancy/ctx'
 import { safeFileName } from '@/lib/storage'
 import { downloadDocument } from '@/modules/documents/binary'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * Document download — the only path bytes take out of the system.
@@ -60,7 +61,7 @@ export async function GET(
       return NextResponse.json({ error: 'Not found.' }, { status: 404 })
     }
 
-    console.error('[documents] download failed', error)
+    log.error('documents.download.failed', { error })
     return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 })
   }
 }

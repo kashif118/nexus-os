@@ -7,6 +7,7 @@ import { MAX_UPLOAD_BYTES } from '@/lib/storage'
 import { uploadMetaSchema } from '@/modules/documents/schema'
 import * as documents from '@/modules/documents/queries'
 import { uploadDocument } from '@/modules/documents/binary'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * Document upload.
@@ -115,6 +116,6 @@ function errorResponse(error: unknown): NextResponse {
     }
   }
 
-  console.error('[documents] upload failed', error)
+  log.error('documents.upload.failed', { error })
   return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 })
 }

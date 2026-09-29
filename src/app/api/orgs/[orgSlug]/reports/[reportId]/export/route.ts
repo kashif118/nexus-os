@@ -4,6 +4,7 @@ import { isAppError } from '@/kernel/errors'
 import { requireCtx } from '@/kernel/tenancy/ctx'
 import { exportFileName, toCsv } from '@/modules/reports/export'
 import { generate } from '@/modules/reports/queries'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * Export a report as CSV.
@@ -49,7 +50,7 @@ export async function GET(
       return NextResponse.json({ error: 'Not found.' }, { status: 404 })
     }
 
-    console.error('[reports] export failed', error)
+    log.error('reports.export.failed', { error })
     return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 })
   }
 }

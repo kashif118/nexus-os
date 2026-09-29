@@ -3,10 +3,13 @@ import type { NextConfig } from 'next'
 /**
  * Security headers applied to every response.
  *
- * NOTE: the strict, nonce-based CSP described in `docs/OPERATIONS.md` §N.1 is
- * introduced in Phase 02 together with the middleware that generates the nonce.
- * Shipping a nonce-less CSP now would force `unsafe-inline`, which is worse than
- * no CSP at all because it looks like protection while providing none.
+ * The Content-Security-Policy is NOT here: it carries a per-request nonce, so
+ * it is set in `src/proxy.ts` where a value can be generated per response.
+ * These are the static ones.
+ *
+ * HSTS is production-only and deliberately so. Sending it in development would
+ * pin `localhost` to HTTPS in the developer's browser for a year, which is
+ * remarkably annoying to undo.
  */
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -16,6 +19,15 @@ const securityHeaders = [
     key: 'Permissions-Policy',
     value: 'camera=(), microphone=(), geolocation=(), browsing-topics=()',
   },
+  { key: 'X-DNS-Prefetch-Control', value: 'off' },
+  ...(process.env.NODE_ENV === 'production'
+    ? [
+        {
+          key: 'Strict-Transport-Security',
+          value: 'max-age=63072000; includeSubDomains; preload',
+        },
+      ]
+    : []),
 ]
 
 const nextConfig: NextConfig = {

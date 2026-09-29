@@ -1,6 +1,7 @@
 import { registerSubscriber, type DomainEvent, type Subscriber } from '@/kernel/events'
 
 import { runSpecific, startRunsForEvent } from './engine'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * The workflow subscriber.
@@ -38,7 +39,7 @@ export const workflowSubscriber: Subscriber = {
       await runSpecific(runIds)
     } catch (error) {
       // The runs stay QUEUED and the sweep retries them.
-      console.error('[workflows] run execution failed', error)
+      log.error('workflows.run.failed', { error })
     }
   },
 }

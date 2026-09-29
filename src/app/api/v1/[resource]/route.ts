@@ -8,6 +8,7 @@ import * as finance from '@/modules/finance/queries'
 import * as projects from '@/modules/projects/queries'
 import { authenticateApiRequest } from '@/modules/security/api-auth'
 import * as tasks from '@/modules/tasks/queries'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * The read-only public API.
@@ -103,7 +104,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ reso
       )
     }
 
-    console.error('[api] request failed', { resource, error })
+    log.error('api.request.failed', { resource, error })
     return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 })
   }
 }

@@ -1,5 +1,6 @@
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { getSystemDb } from '@/lib/db'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * AI persistence.
@@ -52,7 +53,7 @@ export async function recordExecution(input: {
   } catch (error) {
     // Losing an audit row must never fail the thing being audited. It is logged
     // loudly instead, which is the same trade the audit writer makes.
-    console.error('[ai] failed to record execution', { purpose: input.purpose, error })
+    log.error('ai.execution.record.failed', { purpose: input.purpose, error })
   }
 }
 

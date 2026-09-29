@@ -1,6 +1,7 @@
 import { getSystemDb } from '@/lib/db'
 
 import type { EventType } from './catalogue'
+import { log } from '@/kernel/observability/logger'
 
 /**
  * Emit a domain event.
@@ -60,6 +61,6 @@ export async function emitEventSafely(input: EmitInput): Promise<void> {
   try {
     await emitEvent(input)
   } catch (error) {
-    console.error('[events] failed to emit', { type: input.type, error })
+    log.error('events.emit.failed', { type: input.type, error })
   }
 }

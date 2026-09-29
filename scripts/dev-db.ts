@@ -15,6 +15,7 @@
 import { resolve } from 'node:path'
 
 import EmbeddedPostgres from 'embedded-postgres'
+import { Client } from 'pg'
 
 const DATA_DIR = resolve(process.cwd(), '.postgres-data')
 const PORT = Number(process.env.DEV_DB_PORT ?? 55432)
@@ -43,11 +44,54 @@ async function start() {
 
   await server.start()
 
+  /**
+   * Create the database with an explicit UTF-8 encoding.
+   *
+   * `initdb` picks the encoding from the host locale, which on a Windows
+   * machine is WIN1252 — and then storing any character outside it fails with
+   * "has no equivalent in encoding WIN1252". That is not a theoretical problem:
+   * an accented name, a curly quote or an em dash in any user-entered text
+   * would be rejected by the database, in development only, which is the worst
+   * place for a difference from production to hide.
+   *
+   * `TEMPLATE template0` is required to override the encoding, because
+   * template1 carries the cluster's own.
+   */
+  const client = new Client({
+    connectionString: `postgresql://${USER}:${PASSWORD}@localhost:${PORT}/postgres`,
+  })
+
+  await client.connect()
   try {
-    await server.createDatabase(DATABASE)
-    console.log(`Created database "${DATABASE}".`)
-  } catch {
-    console.log(`Database "${DATABASE}" already exists.`)
+    await client.query(
+      `CREATE DATABASE "${DATABASE}" ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0`,
+    )
+    console.log(`Created database "${DATABASE}" with UTF-8 encoding.`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (!message.includes('already exists')) throw error
+
+    const { rows } = await client.query<{ encoding: string }>(
+      `SELECT pg_encoding_to_char(encoding) AS encoding FROM pg_database WHERE datname = $1`,
+      [DATABASE],
+    )
+
+    const encoding = rows[0]?.encoding ?? 'unknown'
+    console.log(`Database "${DATABASE}" already exists (encoding: ${encoding}).`)
+
+    if (encoding !== 'UTF8') {
+      console.warn(
+        [
+          '',
+          `  WARNING: "${DATABASE}" is ${encoding}, not UTF8.`,
+          '  Text outside that encoding will be rejected on write.',
+          '  Drop the database and run this again to recreate it.',
+          '',
+        ].join('\n'),
+      )
+    }
+  } finally {
+    await client.end()
   }
 
   const url = `postgresql://${USER}:${PASSWORD}@localhost:${PORT}/${DATABASE}`

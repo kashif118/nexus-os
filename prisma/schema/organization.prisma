@@ -97,6 +97,11 @@ model Organization {
 
   outboxEvents            OutboxEvent[]
   aiExecutions            AIExecution[]
+  aiAgentConfigs          AIAgentConfig[]
+  aiAgentRuns             AIAgentRun[]
+  aiAgentSteps            AIAgentStep[]
+  aiProposals             AIProposal[]
+  aiMemories              AIMemory[]
   aiUsageCounters         AIUsageCounter[]
   aiInsights              AIInsight[]
   aiConversations         AIConversation[]
@@ -165,6 +170,9 @@ model Membership {
 
   workflowsOwned          Workflow[]               @relation("WorkflowOwner")
   insightsDismissed       AIInsight[]              @relation("InsightDismisser")
+  agentsOwned             AIAgentConfig[]          @relation("AgentOwner")
+  proposalsDecided        AIProposal[]             @relation("ProposalDecider")
+  agentMemories           AIMemory[]               @relation("MemoryOwner")
   aiConversations         AIConversation[]         @relation("ConversationOwner")
   notificationsReceived   Notification[]           @relation("NotificationRecipient")
   notificationPreferences NotificationPreference[] @relation("PreferenceOwner")

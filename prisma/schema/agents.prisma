@@ -1,0 +1,185 @@
+// NEXUS OS — AI agents (docs/AI-AND-AUTOMATION.md §K).
+//
+// The model that shapes this file: an agent PROPOSES, a person DISPOSES.
+//
+// An agent run produces proposals — "create this task", "notify this person" —
+// which are rows a human accepts or rejects. Nothing an agent decides changes
+// the organization's data until somebody says yes, unless that agent has been
+// explicitly granted autonomy for that action by someone who could perform it
+// themselves.
+//
+// That is a product decision as much as a safety one. An automation that acts
+// invisibly gets switched off the first time it is wrong; one that proposes
+// gets trusted, and can be promoted to autonomous once it has earned it.
+
+enum AgentRunStatus {
+  RUNNING
+  AWAITING_CONFIRMATION
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AgentAutonomy {
+  /// Every write is proposed and waits for a person.
+  SUGGEST
+  /// Writes execute immediately, within the granting member's permissions.
+  AUTONOMOUS
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  FAILED
+}
+
+/// Per-organization configuration for one agent. The agent's behaviour is code;
+/// this row says whether it is on, who it acts as, and how far it may go.
+model AIAgentConfig {
+  id             String @id @default(cuid())
+  organizationId String
+
+  /// Matches a key in the code registry. An unknown key is ignored, not run.
+  agentKey String
+
+  enabled  Boolean       @default(false)
+  autonomy AgentAutonomy @default(SUGGEST)
+
+  /// The member whose permissions the agent acts with. Null disables it: an
+  /// agent with no owner has no permissions, which is the safe reading.
+  ownerMembershipId String?
+
+  /// Optional per-organization additions to the agent's instructions. Appended,
+  /// never replacing the code-defined prompt — an editable system prompt is an
+  /// editable security boundary.
+  extraInstructions String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner        Membership?  @relation("AgentOwner", fields: [ownerMembershipId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, agentKey])
+}
+
+/// One execution of an agent, with every step it took.
+model AIAgentRun {
+  id             String @id @default(cuid())
+  organizationId String
+
+  agentKey String
+  status   AgentRunStatus @default(RUNNING)
+
+  /// What set it off: a person, an event, a schedule.
+  trigger      String
+  /// The question or the event payload.
+  input        Json?
+  /// The agent's own summary of what it found and what it proposes.
+  summary      String?
+
+  /// The member the run acted as — its permission ceiling.
+  actingMembershipId String?
+  startedById        String?
+
+  promptTokens     Int @default(0)
+  completionTokens Int @default(0)
+  costMicros       Int @default(0)
+
+  error String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  steps     AIAgentStep[]
+  proposals AIProposal[]
+
+  @@index([organizationId, agentKey, startedAt])
+  @@index([organizationId, status])
+}
+
+/// One turn or tool call inside a run. Append-only, for the transparency panel.
+model AIAgentStep {
+  id             String @id @default(cuid())
+  organizationId String
+  runId          String
+
+  position Int
+  kind     String
+
+  toolName String?
+  input    Json?
+  output   Json?
+  error    String?
+
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run          AIAgentRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, position])
+  @@index([organizationId, runId])
+}
+
+/// A change an agent wants to make. Inert until accepted.
+model AIProposal {
+  id             String @id @default(cuid())
+  organizationId String
+  runId          String
+
+  /// The write tool it would call, and the arguments it would pass.
+  toolName String
+  args     Json
+
+  /// Plain-language description, so a person can decide without reading JSON.
+  summary String
+
+  status ProposalStatus @default(PENDING)
+
+  decidedByMembershipId String?
+  decidedAt             DateTime?
+  /// Result or failure of executing an accepted proposal.
+  outcome               Json?
+
+  /// Derived from (runId, toolName, args). Prevents the same accepted proposal
+  /// being executed twice by a double submit or a retry.
+  idempotencyKey String
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  run          AIAgentRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  decidedBy    Membership?  @relation("ProposalDecider", fields: [decidedByMembershipId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, createdAt])
+}
+
+/// Durable notes an agent keeps between runs.
+model AIMemory {
+  id             String @id @default(cuid())
+  organizationId String
+
+  agentKey String
+  /// Null means the memory is shared across the organization for that agent.
+  membershipId String?
+
+  key   String
+  value String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership   Membership?  @relation("MemoryOwner", fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, agentKey, membershipId, key])
+  @@index([organizationId, agentKey])
+}

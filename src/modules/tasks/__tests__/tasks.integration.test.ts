@@ -10,7 +10,6 @@ import {
 } from '@/kernel/authz/can'
 import type { Permission } from '@/kernel/authz/catalogue'
 import { loadPermissions } from '@/kernel/authz/load'
-import { seedAuthorization } from '@/kernel/authz/seed'
 import { isAppError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { getDb, getSystemDb } from '@/lib/db'
@@ -101,7 +100,6 @@ const base = { status: 'BACKLOG', priority: 'MEDIUM' }
 
 describe.skipIf(!hasDatabase)('Tasks', () => {
   beforeAll(async () => {
-    await seedAuthorization()
     const db = getSystemDb()
 
     for (const [slug, key] of [

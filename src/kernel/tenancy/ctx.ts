@@ -187,3 +187,80 @@ export async function requireCtxPage(orgSlug: string, returnTo?: string): Promis
   if (!ctx) notFound()
   return ctx
 }
+
+/**
+ * Build a context for a membership, with no session behind it.
+ *
+ * For code that acts AS somebody without them being present: a workflow running
+ * as its owner, an agent running as the member who enabled it. It is the same
+ * `Ctx` a request would produce — same permission resolution, same org-scoped
+ * client — so nothing downstream can tell the difference or gain from it.
+ *
+ * Returns null when the membership is gone or suspended, which is the correct
+ * reading: an automation owned by a former employee has no permissions.
+ */
+export async function buildMembershipCtx(
+  organizationId: string,
+  membershipId: string,
+): Promise<Ctx | null> {
+  const membership = await getSystemDb().membership.findFirst({
+    where: { id: membershipId, organizationId, status: 'ACTIVE' },
+    select: {
+      id: true,
+      userId: true,
+      user: { select: { id: true, name: true, email: true, emailVerifiedAt: true } },
+      organization: {
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          logoUrl: true,
+          timezone: true,
+          currency: true,
+          createdById: true,
+        },
+      },
+    },
+  })
+
+  if (!membership) return null
+
+  const isOwner = membership.organization.createdById === membership.userId
+  const { permissions, roles } = await loadPermissions({
+    membershipId: membership.id,
+    organizationId,
+    isOwner,
+  })
+
+  return Object.freeze({
+    userId: membership.userId,
+    sessionId: 'system',
+    orgId: organizationId,
+    orgSlug: membership.organization.slug,
+    membershipId: membership.id,
+    isOwner,
+    user: {
+      id: membership.user.id,
+      name: membership.user.name,
+      email: membership.user.email,
+      emailVerifiedAt: membership.user.emailVerifiedAt,
+    },
+    org: {
+      id: membership.organization.id,
+      slug: membership.organization.slug,
+      name: membership.organization.name,
+      logoUrl: membership.organization.logoUrl,
+      timezone: membership.organization.timezone,
+      currency: membership.organization.currency,
+    },
+    roles,
+    permissions,
+    can: (permission: Permission) => can(permissions, permission),
+    canAny: (list: readonly Permission[]) => canAny(permissions, list),
+    require: (permission: Permission) => requirePermission(permissions, permission),
+    requireAny: (list: readonly Permission[]) => requireAny(permissions, list),
+    scope: (any: Permission, own: Permission) => resolveScope(permissions, any, own),
+    granted: (list: readonly Permission[]) => grantedFrom(permissions, list),
+    db: getDb(organizationId),
+  })
+}

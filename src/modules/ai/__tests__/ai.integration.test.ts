@@ -10,7 +10,6 @@ import {
 } from '@/kernel/authz/can'
 import type { Permission } from '@/kernel/authz/catalogue'
 import { loadPermissions } from '@/kernel/authz/load'
-import { seedAuthorization } from '@/kernel/authz/seed'
 import { isAppError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { setProvider } from '@/lib/ai/router'
@@ -168,7 +167,6 @@ async function seedOrg(slug: string, ownerKey: string) {
 
 describe.skipIf(!hasDatabase)('AI', () => {
   beforeAll(async () => {
-    await seedAuthorization()
     const db = getSystemDb()
 
     state.orgId = await seedOrg(SLUG, 'owner')

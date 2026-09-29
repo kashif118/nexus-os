@@ -10,7 +10,6 @@ import {
 } from '@/kernel/authz/can'
 import type { Permission } from '@/kernel/authz/catalogue'
 import { loadPermissions } from '@/kernel/authz/load'
-import { seedAuthorization } from '@/kernel/authz/seed'
 import { isAppError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { getDb, getSystemDb } from '@/lib/db'
@@ -100,7 +99,6 @@ const ROLE_KEYS = [
 
 describe.skipIf(!hasDatabase)('RBAC end to end', () => {
   beforeAll(async () => {
-    await seedAuthorization()
     const db = getSystemDb()
 
     const owner = await db.user.create({

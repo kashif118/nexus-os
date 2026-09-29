@@ -11,6 +11,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['./vitest.setup.mts'],
+    // Seeds the authorization catalogue once, before any suite. See the file
+    // for why that is not left to each suite's beforeAll.
+    globalSetup: ['./vitest.global-setup.mts'],
     globals: false,
     include: ['src/**/*.test.ts', 'src/**/__tests__/**/*.test.ts'],
     // Integration tests talk to a real database; they skip themselves when one
@@ -29,11 +32,12 @@ export default defineConfig({
      *
      * Six is comfortably under the default `max_connections` of 100 with each
      * pool at its default size, and still uses the machine.
+     *
+     * (Top-level `maxWorkers`, not `poolOptions` — Vitest 4 removed the latter,
+     * and it was being ignored silently.)
      */
-    poolOptions: {
-      forks: { maxForks: 6, minForks: 1 },
-      threads: { maxThreads: 6, minThreads: 1 },
-    },
+    maxWorkers: 6,
+    minWorkers: 1,
     exclude: ['node_modules/**', '.next/**', 'e2e/**'],
     coverage: {
       provider: 'v8',

@@ -10,7 +10,6 @@ import {
 } from '@/kernel/authz/can'
 import type { Permission } from '@/kernel/authz/catalogue'
 import { loadPermissions } from '@/kernel/authz/load'
-import { seedAuthorization } from '@/kernel/authz/seed'
 import { drainOutbox, emitEvent, registerSubscriber, resetSubscribers } from '@/kernel/events'
 import { isAppError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
@@ -172,7 +171,6 @@ const overdueEvent = (totalMinor: number, number = 'INV-0001') => ({
 
 describe.skipIf(!hasDatabase)('Workflow engine', () => {
   beforeAll(async () => {
-    await seedAuthorization()
 
     state.orgId = await seedOrg(SLUG, 'owner')
     state.otherOrgId = await seedOrg(OTHER_SLUG, 'otherOwner')

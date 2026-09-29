@@ -12,7 +12,6 @@ import {
 } from '@/kernel/authz/can'
 import type { Permission } from '@/kernel/authz/catalogue'
 import { loadPermissions } from '@/kernel/authz/load'
-import { seedAuthorization } from '@/kernel/authz/seed'
 import { isAppError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { getDb, getSystemDb } from '@/lib/db'
@@ -148,8 +147,6 @@ describe.skipIf(!hasDatabase)('Documents', () => {
     // Real files, in a directory this suite owns and removes afterwards.
     process.env.STORAGE_DRIVER = 'local'
     process.env.STORAGE_LOCAL_DIR = STORAGE_DIR
-
-    await seedAuthorization()
 
     state.orgId = await seedOrg(SLUG, 'owner')
     state.otherOrgId = await seedOrg(OTHER_SLUG, 'otherOwner')

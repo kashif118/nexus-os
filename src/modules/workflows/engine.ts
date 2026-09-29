@@ -1,15 +1,5 @@
-import {
-  can,
-  canAny,
-  grantedFrom,
-  require as requirePermission,
-  requireAny,
-  resolveScope,
-} from '@/kernel/authz/can'
-import type { Permission } from '@/kernel/authz/catalogue'
-import { loadPermissions } from '@/kernel/authz/load'
-import type { Ctx } from '@/kernel/tenancy/ctx'
-import { getDb, getSystemDb } from '@/lib/db'
+import { buildMembershipCtx, type Ctx } from '@/kernel/tenancy/ctx'
+import { getSystemDb } from '@/lib/db'
 
 import './builtin-actions'
 import './triggers'
@@ -497,76 +487,10 @@ async function finish(
 }
 
 /**
- * Build the context actions run under.
+ * The context actions run under.
  *
  * Derived from the workflow OWNER, never from whoever caused the triggering
  * event: an automation that ran with the rights of whoever happened to touch a
  * record would be a privilege escalation with a friendly UI.
  */
-export async function buildOwnerContext(
-  organizationId: string,
-  ownerMembershipId: string,
-): Promise<Ctx | null> {
-  const db = getSystemDb()
-
-  const membership = await db.membership.findFirst({
-    where: { id: ownerMembershipId, organizationId, status: 'ACTIVE' },
-    select: {
-      id: true,
-      userId: true,
-      user: { select: { id: true, name: true, email: true, emailVerifiedAt: true } },
-      organization: {
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          logoUrl: true,
-          timezone: true,
-          currency: true,
-          createdById: true,
-        },
-      },
-    },
-  })
-
-  if (!membership) return null
-
-  const isOwner = membership.organization.createdById === membership.userId
-  const { permissions, roles } = await loadPermissions({
-    membershipId: membership.id,
-    organizationId,
-    isOwner,
-  })
-
-  return Object.freeze({
-    userId: membership.userId,
-    sessionId: 'workflow',
-    orgId: organizationId,
-    orgSlug: membership.organization.slug,
-    membershipId: membership.id,
-    isOwner,
-    user: {
-      id: membership.user.id,
-      name: membership.user.name,
-      email: membership.user.email,
-      emailVerifiedAt: membership.user.emailVerifiedAt,
-    },
-    org: {
-      id: membership.organization.id,
-      slug: membership.organization.slug,
-      name: membership.organization.name,
-      logoUrl: membership.organization.logoUrl,
-      timezone: membership.organization.timezone,
-      currency: membership.organization.currency,
-    },
-    roles,
-    permissions,
-    can: (permission: Permission) => can(permissions, permission),
-    canAny: (list: readonly Permission[]) => canAny(permissions, list),
-    require: (permission: Permission) => requirePermission(permissions, permission),
-    requireAny: (list: readonly Permission[]) => requireAny(permissions, list),
-    scope: (any: Permission, own: Permission) => resolveScope(permissions, any, own),
-    granted: (list: readonly Permission[]) => grantedFrom(permissions, list),
-    db: getDb(organizationId),
-  })
-}
+export const buildOwnerContext = buildMembershipCtx

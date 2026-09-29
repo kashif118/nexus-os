@@ -10,7 +10,6 @@ import {
 } from '@/kernel/authz/can'
 import type { Permission } from '@/kernel/authz/catalogue'
 import { loadPermissions } from '@/kernel/authz/load'
-import { seedAuthorization } from '@/kernel/authz/seed'
 import { isAppError } from '@/kernel/errors'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 import { parseListParams } from '@/kernel/validation/list-params'
@@ -103,7 +102,6 @@ const listParams = parseListParams({}, { sortableFields: COMPANY_SORT_FIELDS, de
 
 describe.skipIf(!hasDatabase)('CRM', () => {
   beforeAll(async () => {
-    await seedAuthorization()
     const db = getSystemDb()
 
     const ownerA = await db.user.create({

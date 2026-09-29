@@ -62,6 +62,12 @@ export const NAVIGATION: NavDefinition[] = [
     requires: ['ai.use'],
   },
   {
+    href: '/agents',
+    label: 'Agents',
+    icon: 'ai',
+    requires: ['ai.use'],
+  },
+  {
     href: '/workflows',
     label: 'Workflows',
     icon: 'workflows',

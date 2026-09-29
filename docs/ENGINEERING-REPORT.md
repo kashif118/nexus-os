@@ -1,10 +1,14 @@
 # NEXUS OS — Final engineering report
 
-24 phases plus a production-hardening pass (§25), 371 source files, ~61,000 lines of
-TypeScript. Verified at the point of writing: `npm run verify` green (1,087 unit and
-integration tests across 51 files), `npm run test:e2e` green (53 Playwright journeys
-across 6 specs against a production build), `npm run build` green, `npm run check:bundle`
-inside budget.
+Built by **Muhammad Kashif** — kashifarish2001@gmail.com
+
+24 phases, a production-hardening pass (§25) and a completion pass (§26). Verified at the
+point of writing: `npm run verify` green (**1,089 unit and integration tests** across 51
+files), `npm run test:e2e` green (**54 Playwright journeys** across 6 specs against a
+production build), `npm run build` green, `npm run check:bundle` inside budget.
+
+**Status: ready for a first staging deployment; not production-ready.** §25.5 and §26.7 say
+why, and §26.5 lists every external integration that has never been contacted.
 
 Where this report states a number, it was measured. Where something is missing, it says so.
 
@@ -701,10 +705,124 @@ staging environment and exercised.** It is not ready to hold data somebody would
 
 ---
 
+## 26. Completion and staging-readiness pass
+
+The last pass before a first staging deployment. It found three more documentation defects of
+the same class as `AUTH_SECRET`, one real correctness bug, and two gaps.
+
+### 26.1 DONE
+
+| Item                        | What changed                                                                                                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Creator attribution         | `Built by Muhammad Kashif` on the landing page footer, a new **Settings → About** screen with contact address, and the README. One constant (`src/lib/creator.ts`) so they cannot drift. |
+| Stripe API-version handling | `current_period_end` is read from the subscription **and** from the subscription item, covering both sides of the `2025-03-31.basil` change. A test for each shape.                      |
+| S3 request timeout          | The last external call without one. A hung request held a serverless invocation until the platform killed it.                                                                            |
+| Skip link                   | A keyboard user previously tabbed through fourteen navigation items to reach content, on every navigation. Added, and covered by an end-to-end test.                                     |
+| Environment-variable audit  | The authoritative list is **35 variables**, enumerated from the Zod schema. Every specified-but-never-built variable is now named as such in `docs/OPERATIONS.md` §P.4.                  |
+| Deployment guide            | `docs/DEPLOYMENT.md` — a staging walkthrough where every step that can only be confirmed by running it is marked **CONFIRM**.                                                            |
+| AI retrieval documentation  | `docs/AI-AND-AUTOMATION.md` now states that vector retrieval was never built, what replaced it, and what adding it would involve.                                                        |
+
+### 26.2 Three more documentation defects
+
+The same failure mode as `AUTH_SECRET` in §25: documentation describing variables and features
+that do not exist, which a deployer would waste time on and — worse — might believe was
+protecting something.
+
+1. **`AI_PROVIDER` does not exist.** Nor does `OPENAI_API_KEY`, `AI_MODEL_*` or
+   `AI_MONTHLY_TOKEN_BUDGET`. Anthropic is the only adapter and is selected by the presence of
+   `ANTHROPIC_API_KEY` alone; model choice is a code table keyed by purpose
+   (`src/lib/ai/router.ts`), deliberately not configuration. The budget variable that does
+   exist is `AI_MONTHLY_BUDGET_MICROS`.
+2. **Four of the six documented Stripe price variables do not exist**, and neither does
+   `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` — there is no Stripe script in the browser, because
+   checkout is a redirect to a provider-hosted page.
+3. **`UPSTASH_REDIS_*`, `FEATURE_*`, `ENCRYPTION_KEY`, `AUTH_URL`, `AUTH_GOOGLE_*` and
+   `AUTH_GITHUB_*` do not exist.** No cache, no feature flags, nothing encrypted at rest, no
+   OAuth.
+
+### 26.3 The pgvector question, answered
+
+The specification's context layer reads "Retrieval (SQL scopes + pgvector)". **Vector
+retrieval was never built** — no extension, no embeddings table, no embedding is ever
+computed, no similarity search exists. `EmbedRequest`/`EmbedResult` exist on the port and the
+Anthropic adapter's `embed()` throws rather than returning a plausible zero vector.
+
+What exists instead: **13 typed tools**, each calling a module query boundary that runs
+`ctx.require()` before reading a row, plus a rolling window of the last 20 conversation turns.
+
+This is worth being precise about in both directions. It is a **narrower capability** — the
+assistant cannot answer by similarity, only through the filters the tools expose. It is also a
+**stronger security position**, and not merely a consolation: with retrieval-by-embedding,
+authorization is applied to chunks after the fact and a mis-scoped index leaks silently; with
+retrieval-by-tool, the AI path is the same authorization path as the rest of the application,
+so the isolation matrix already covers it.
+
+Semantic retrieval is **FUTURE**, and adding it means pgvector, an embeddings table carrying
+`organizationId`, a second provider (Anthropic has no embeddings endpoint), a backfill, and a
+per-chunk permission re-check before anything reaches a prompt.
+
+### 26.4 VERIFIED in this pass
+
+Locally, without any external credential:
+
+- Both Stripe `current_period_end` shapes, each by a test that fails without the fix.
+- The S3 signing logic and timeout path; document upload, download, versions, sharing and
+  quota through the existing integration suites.
+- Tenant isolation across all 66 tenant models, and the 7 × 109 authorization matrix.
+- The skip link, by keyboard, end to end.
+- No secret is committed: the only tracked `.env*` file is `.env.example`, and it contains
+  local placeholders only. The three secret-shaped strings in the repository are redaction
+  test fixtures — including AWS's own published example key — and are meant to be there.
+- **The full gate:** typecheck · lint · format · env sync · **1,089 unit and integration
+  tests** · **54 end-to-end journeys** · production build · bundle budget (127.8 KB shared).
+
+### 26.5 BLOCKED — requires credentials or a deployment
+
+Unchanged from §25.3 and repeated because it is the part that matters:
+
+| Integration          | Blocked on                                                                          |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| Email delivery       | `RESEND_API_KEY`, or `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD`                        |
+| Document storage     | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` |
+| Stripe               | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (test mode)                            |
+| Anthropic            | `ANTHROPIC_API_KEY`                                                                 |
+| Error reporting      | `SENTRY_DSN`                                                                        |
+| Cron registration    | A Vercel deployment                                                                 |
+| Backup/restore drill | A provisioned database with real volume                                             |
+
+**No live call has been made to any of them.** Nothing in this repository claims otherwise.
+
+### 26.6 FUTURE — deliberate, documented gaps
+
+Not attempted, with the reason rather than an apology:
+
+- **Row-level security.** The correct next structural investment. Requires per-transaction
+  session variables through a transaction-mode pooler across 66 tables; adding it in a
+  completion pass would risk isolation that currently works and is proven.
+- **MFA, OAuth, passkeys.** Features, not hardening. Password-only with a 30-day sliding
+  session remains the largest authentication-side risk.
+- **Malware scanning on upload.** Needs an external scanner.
+- **Cache layer, nightly rollups, load testing, shared-store rate limiting.**
+- **Screen-reader audit.** Semantics, labels, focus order, landmarks and `aria-*` were built
+  in deliberately and are exercised by role-based selectors throughout the E2E suite; the skip
+  link was the one clear structural gap and is now fixed. **No assistive technology has been
+  used against this application**, so it is unaudited rather than accessible.
+
+### 26.7 Status
+
+**Ready for a first staging deployment. Not production-ready**, and §25.5 still holds: the
+remaining work is configuration and rehearsal, not code. The honest one-line summary is that
+every line of this application has been tested against a real database and none of it has ever
+spoken to a real external service.
+
+---
+
 ### Where to read further
 
 - `docs/ROADMAP.md` **§U** — every deviation from the specification, phase by phase, including
   each defect the tests found and what it turned out to be. 60 entries.
 - `docs/OPERATIONS.md` **§Q** — deployment as built, and the explicit list of what is not there.
+- `docs/DEPLOYMENT.md` — the step-by-step first staging deployment.
+- `docs/RUNBOOK.md` — monitoring, alerting, backup and restore.
 - `docs/PLATFORM.md` §H — the eight isolation layers in detail.
 - `docs/AI-AND-AUTOMATION.md` §J — the agent authorization model.

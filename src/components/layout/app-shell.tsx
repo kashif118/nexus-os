@@ -37,6 +37,18 @@ export function AppShell({
 }) {
   return (
     <div className="bg-background flex min-h-dvh">
+      {/*
+        Skip link. Visually hidden until focused, which is the point: a keyboard
+        user would otherwise tab through fourteen navigation items before
+        reaching the page content, on every single navigation.
+      */}
+      <a
+        href="#main-content"
+        className="bg-primary text-primary-foreground focus-visible:ring-ring sr-only rounded-md px-4 py-2 text-sm font-medium focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3 focus-visible:z-50 focus-visible:ring-2 focus-visible:outline-none"
+      >
+        Skip to content
+      </a>
+
       <aside className="bg-card hidden w-60 shrink-0 flex-col border-r md:flex">
         <div className="border-b p-3">
           <OrgSwitcher current={org} organizations={organizations} />
@@ -66,7 +78,9 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="min-w-0 flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
+        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 md:px-6 md:py-8">
+          {children}
+        </main>
       </div>
     </div>
   )

@@ -418,7 +418,7 @@ product is explicit about rather than a degradation it hides:
 
 | Variable                                           | Without it                                                   |
 | -------------------------------------------------- | ------------------------------------------------------------ |
-| `ANTHROPIC_API_KEY` (+ `AI_PROVIDER`)              | The assistant says it is not configured. It invents nothing. |
+| `ANTHROPIC_API_KEY`                                | The assistant says it is not configured. It invents nothing. |
 | `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`      | No checkout; an owner sets the plan, recorded as manual.     |
 | `STRIPE_PRICE_TEAM` / `STRIPE_PRICE_BUSINESS`      | That plan cannot be purchased.                               |
 | `AI_MONTHLY_BUDGET_MICROS`                         | Defaults to 50 USD per organization per month.               |

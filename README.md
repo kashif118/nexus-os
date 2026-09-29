@@ -96,10 +96,11 @@ refuses to run twice.
 ### Verifying the build
 
 ```bash
-npm run verify        # typecheck · lint · format · env sync · 1,031 unit and integration tests
-npm run test:e2e      # 49 Playwright journeys against a production build
-npm run build         # production build
-npm run check:bundle  # client bundle budget, gzipped
+npm run verify           # typecheck · lint · format · env sync · unit and integration tests
+npm run test:e2e         # Playwright journeys against a production build
+npm run build            # production build
+npm run check:bundle     # client bundle budget, gzipped
+npm run check:production # is this configuration fit to serve real users?
 ```
 
 `npm run db:start` runs a real PostgreSQL from a prebuilt binary into `.postgres-data/`, so
@@ -140,6 +141,8 @@ a port, so swapping providers is one file.
 | [`docs/AI-AND-AUTOMATION.md`](./docs/AI-AND-AUTOMATION.md)   | AI provider abstraction, agent runtime, workflow engine       |
 | [`docs/OPERATIONS.md`](./docs/OPERATIONS.md)                 | API contracts, security, testing, **§Q deployment as built**  |
 | [`docs/ROADMAP.md`](./docs/ROADMAP.md)                       | Phases, risks, decision log, **§U every deviation from spec** |
+| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)                 | Step-by-step first staging deployment to Vercel               |
+| [`docs/RUNBOOK.md`](./docs/RUNBOOK.md)                       | Monitoring, alerting, backup and restore                      |
 | [`docs/ENGINEERING-REPORT.md`](./docs/ENGINEERING-REPORT.md) | The final report: every module, the numbers, and the limits   |
 
 `docs/ROADMAP.md` §U is worth reading on its own: it records every place the built system
@@ -147,17 +150,36 @@ departs from the specification and why, including the defects the tests found.
 
 ## Deploying
 
-`docs/OPERATIONS.md` §Q has the exact steps, the required environment variables, and what each
-optional one turns on. The short version: provision Postgres, set `DATABASE_URL`,
-`DIRECT_DATABASE_URL`, `AUTH_SECRET` and `NEXT_PUBLIC_APP_URL`, run `npm run db:deploy` and
-`npm run db:seed`, deploy, and check `GET /api/health`.
+**[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)** is the step-by-step guide for a first staging
+deployment. `docs/OPERATIONS.md` §Q.4 is the authoritative environment-variable list and
+`docs/RUNBOOK.md` covers monitoring, backup and restore.
+
+Before deploying anything:
+
+```bash
+npm run check:production   # is THIS configuration fit to serve real users?
+```
+
+It reads configuration only — no connection, no request, no credentials — and refuses a
+configuration missing any of the eight required variables, naming what breaks rather than
+just what is unset. Every one of those failures is silent at runtime, which is the whole
+reason the check exists.
 
 ## What this is not
 
 Stated plainly, because the difference between "planned" and "present" is where trust is lost.
 
-- **No error-reporting service, alerting, or uptime monitoring.** `/api/health` exists to be
-  polled; nothing polls it.
+- **No live external integration has ever been exercised.** Stripe, Anthropic, email and
+  error reporting are written to their documented contracts and tested against constructed
+  payloads. No real call has been made, because no credentials were available and none were
+  invented. See `docs/ENGINEERING-REPORT.md` §25.3.
+- **No alerting or uptime monitoring is configured.** `/api/health` exists to be polled and
+  `docs/RUNBOOK.md` §1 says exactly how; nothing polls it.
+- **No restore drill has been performed.** The procedure is written down and marked DRILL
+  REQUIRED.
+- **No semantic or vector retrieval.** The AI reaches organization data through 13 typed
+  tools that each enforce permissions — not through embeddings. The original specification
+  described pgvector; it was not built.
 - **No cache layer and no nightly rollups.** Everything is computed per request, which the
   query-budget tests keep affordable and which will need revisiting long before a tenant has
   millions of rows.
@@ -169,6 +191,14 @@ Stated plainly, because the difference between "planned" and "present" is where 
   written to the documented contracts and tested against fixtures.
 - **Unit and integration coverage is 50% of statements** across `kernel`, `lib` and `modules`.
   UI is covered by the end-to-end suite instead, which Vitest does not instrument.
+
+## Credits
+
+Built by **Muhammad Kashif** — kashifarish2001@gmail.com
+
+The architecture, every decision behind it and every deviation from the original
+specification are recorded in [`docs/`](./docs) — including an engineering report that is
+explicit about what has **not** been verified.
 
 ## License
 

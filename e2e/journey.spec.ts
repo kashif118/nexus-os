@@ -175,3 +175,26 @@ test.describe('a full pass through the product', () => {
     await expect(page.getByText('1 of 10').first()).toBeVisible()
   })
 })
+
+/**
+ * Keyboard access.
+ *
+ * Not a substitute for a screen-reader audit — which has not been done and is
+ * recorded as unaudited — but the skip link is the one thing a keyboard user
+ * needs on every single page, and its absence is testable.
+ */
+test.describe('keyboard navigation', () => {
+  test('offers a skip link before the sidebar', async ({ page }) => {
+    const slug = await signUpAndCreateOrg(page)
+    await page.goto(`/${slug}`)
+
+    // The first Tab from the top of the document must reach it.
+    await page.keyboard.press('Tab')
+
+    const skip = page.getByRole('link', { name: 'Skip to content' })
+    await expect(skip).toBeFocused()
+
+    await page.keyboard.press('Enter')
+    await expect(page.locator('#main-content')).toBeFocused()
+  })
+})

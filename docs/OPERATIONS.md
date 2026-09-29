@@ -234,12 +234,38 @@ runbook with a quarterly restore drill, storage bucket versioning.
 
 ### P.4 Environment variable strategy
 
-All env access goes through `kernel/config/env.ts`, which parses `process.env` with Zod at
-module load and **fails the boot** if anything required is missing or malformed. Code reads
-`env.STRIPE_SECRET_KEY`, never `process.env.*` directly (lint-enforced). Server and client
-schemas are separate; only `NEXT_PUBLIC_*` values may appear in the client schema.
+All env access goes through `kernel/config/env.ts`, which parses `process.env` with Zod and
+fails loudly on a malformed value. Code reads `env.STRIPE_SECRET_KEY`, never `process.env.*`
+directly (lint-enforced). Server and client schemas are separate; only `NEXT_PUBLIC_*` values
+may appear in the client schema.
+
+> **The block below was the original specification. It is NOT what was built, and several
+> variables in it do not exist in the code.** It is kept because the reasoning behind the
+> design is still useful, but **§Q.4 is the authoritative list** and the schema in
+> `src/kernel/config/env.ts` is the authority behind that.
+>
+> Specified and never implemented — setting any of these does nothing:
+>
+> - `AUTH_SECRET`, `AUTH_URL`, `ENCRYPTION_KEY` — sessions are opaque random tokens stored as
+>   SHA-256 digests. There is no secret to sign with and nothing encrypted at rest.
+> - `AUTH_GOOGLE_*`, `AUTH_GITHUB_*` — no OAuth provider was built.
+> - `AI_PROVIDER`, `OPENAI_API_KEY`, `AI_MODEL_*`, `AI_MONTHLY_TOKEN_BUDGET` — Anthropic is
+>   the only adapter and is selected by the presence of `ANTHROPIC_API_KEY` alone. Model
+>   choice is a code table keyed by purpose (`src/lib/ai/router.ts`), deliberately not an
+>   environment variable. The budget variable that exists is `AI_MONTHLY_BUDGET_MICROS`.
+> - `STRIPE_PRICE_PRO_*`, `STRIPE_PRICE_*_YEARLY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` — the
+>   plans are `team` and `business`, monthly only, so the price variables are
+>   `STRIPE_PRICE_TEAM` and `STRIPE_PRICE_BUSINESS`. No publishable key is needed: checkout is
+>   a redirect to a provider-hosted page, so no Stripe script runs in the browser.
+> - `UPSTASH_REDIS_*` — there is no cache layer.
+> - `SENTRY_AUTH_TOKEN`, `NEXT_PUBLIC_SENTRY_DSN` — source-map upload is not wired up, and the
+>   DSN is deliberately **server-side only**: the browser reports through this application's
+>   own endpoint, so no ingest host appears in the client bundle or the CSP.
+> - `FEATURE_*` — there are no feature flags. Capabilities are gated by permissions.
 
 ```
+# ORIGINAL SPECIFICATION — see the correction above before using this list.
+
 # Core
 NODE_ENV · APP_URL · APP_NAME
 
@@ -247,11 +273,8 @@ NODE_ENV · APP_URL · APP_NAME
 DATABASE_URL                 pooled (PgBouncer/Neon) — runtime
 DIRECT_DATABASE_URL          direct — migrations only
 
-# Auth — the block below is the ORIGINAL SPECIFICATION, not what was built.
-# AUTH_SECRET was never implemented: sessions are opaque random tokens, so
-# there is no secret to sign with. OAuth and MFA were not built either.
-# See §Q.4 for what is actually required.
-AUTH_URL
+# Auth
+AUTH_SECRET · AUTH_URL
 AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET
 AUTH_GITHUB_ID / AUTH_GITHUB_SECRET
 ENCRYPTION_KEY               AES-256-GCM key for MFA secrets / OAuth tokens
@@ -286,9 +309,12 @@ NEXT_PUBLIC_SENTRY_DSN
 FEATURE_AI_AGENTS · FEATURE_WORKFLOWS · FEATURE_CLIENT_PORTAL
 ```
 
-`.env.example` is committed and kept in sync by a CI check that diffs it against the Zod
-schema. Secrets live only in Vercel project settings (per-environment) and a password
-manager; **no secret is ever committed, and no secret is ever `NEXT_PUBLIC_`**.
+**What actually exists: 35 variables** — 33 server, 2 client — enumerated in §Q.4 and
+enforced by `npm run check:env`, which fails CI if `.env.example` and the schema disagree.
+
+`.env.example` is committed and contains placeholders only. Secrets live in the host's
+project settings (per-environment) and a password manager; **no secret is ever committed, and
+no secret is ever `NEXT_PUBLIC_`**.
 
 ---
 

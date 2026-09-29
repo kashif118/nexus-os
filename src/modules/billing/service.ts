@@ -227,7 +227,7 @@ async function handleEvent(event: ProviderEvent): Promise<string | null> {
       providerSubscriptionId: stringOf(data.id),
       plan: planFromPrice(data),
       status,
-      currentPeriodEnd: epochToDate(data.current_period_end),
+      currentPeriodEnd: periodEndOf(data),
       cancelAt: epochToDate(data.cancel_at),
       eventCreatedAt: event.createdAt,
     })
@@ -285,5 +285,30 @@ const stringOf = (value: unknown): string | null =>
 
 const epochToDate = (value: unknown): Date | null =>
   typeof value === 'number' && Number.isFinite(value) ? new Date(value * 1000) : null
+
+/**
+ * When the current paid period ends — read from either place Stripe puts it.
+ *
+ * Stripe moved `current_period_end` off the subscription and onto each
+ * subscription ITEM in API version `2025-03-31.basil`. Which one arrives depends
+ * on the API version pinned to the account sending the webhook, and that is not
+ * something this application controls or can detect in advance.
+ *
+ * Reading only the subscription level — as this did — means a deployment on a
+ * newer API version silently stores `null`: no renewal date on the billing
+ * screen, and no error anywhere to explain why. Reading only the item level
+ * would break every account still on an older version.
+ *
+ * So: subscription first, then the first item. A subscription with several items
+ * is a billing arrangement this product does not create, and taking the first is
+ * the same answer Stripe's own migration guidance gives.
+ */
+function periodEndOf(data: Record<string, unknown>): Date | null {
+  const subscriptionLevel = epochToDate(data.current_period_end)
+  if (subscriptionLevel) return subscriptionLevel
+
+  const items = (data.items as { data?: Array<Record<string, unknown>> } | undefined)?.data
+  return epochToDate(items?.[0]?.current_period_end)
+}
 
 export { planFor, isBillingConfigured }

@@ -123,6 +123,12 @@ export const NAVIGATION: NavDefinition[] = [
     icon: 'settings',
     section: 'Administration',
   },
+  {
+    href: '/settings/about',
+    label: 'About',
+    icon: 'settings',
+    section: 'Administration',
+  },
 ]
 
 export function navigationFor(can: (permission: Permission) => boolean): NavItem[] {

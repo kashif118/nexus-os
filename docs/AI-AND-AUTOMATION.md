@@ -31,6 +31,38 @@
 └──────────────────────────────────────────────────────────────┘
 ```
 
+> ### What was actually built — read this before the diagram above
+>
+> The **CONTEXT** row describes retrieval by "SQL scopes + pgvector". **Vector retrieval was
+> not built.** There is no pgvector extension, no embeddings table, no embedding is ever
+> computed, and no similarity search exists anywhere in the codebase. The `EmbedRequest` and
+> `EmbedResult` types exist on the provider port and the Anthropic adapter's `embed()` throws
+> `This provider does not offer embeddings` rather than returning a plausible zero vector.
+>
+> **How the AI actually reaches organization data:** through **13 typed tools**
+> (`src/modules/ai/tools/`), each calling a module query boundary that enforces the calling
+> user's permissions. The conversation itself carries a rolling window of the last 20 turns;
+> everything else the model knows, it asked a tool for.
+>
+> This is a narrower capability than the specification described — the assistant cannot answer
+> "what did we discuss about margins last quarter" by similarity, only by the filters the
+> tools expose. It is also a **stronger** security position, and that is worth stating rather
+> than presenting as a consolation: with retrieval-by-embedding, authorization is applied to
+> chunks after the fact and a mis-scoped index leaks silently. With retrieval-by-tool, every
+> call passes through `ctx.require()` before a single row is read, and the isolation matrix
+> that covers the rest of the application covers the AI path too, because it is the same path.
+>
+> Semantic retrieval remains **FUTURE**. Adding it means: pgvector, an embeddings table
+> carrying `organizationId` like every other tenant table, an embedding provider (Anthropic
+> has no embeddings endpoint, so this means a second provider), a backfill job, and a
+> re-check of every retrieved chunk against the caller's permissions before it reaches the
+> prompt. The port is shaped for it; nothing else is.
+>
+> Similarly, of the providers listed in **PROVIDER ABSTRACTION**, only **anthropic** exists.
+> `openai`, `bedrock` and `local` are the shape the port was designed to accept, not adapters
+> that were written. Of the cross-cutting concerns listed, retries, timeouts, cost metering,
+> redaction and model routing are built; **caching and the circuit breaker are not**.
+
 ### J.2 Provider abstraction (the swappability requirement)
 
 ```ts

@@ -411,6 +411,65 @@ describe.skipIf(!hasDatabase)('Billing', () => {
       ).toBe('CANCELED')
     })
 
+    /*
+     * Stripe moved `current_period_end` onto the subscription ITEM in API
+     * version 2025-03-31.basil. Which shape arrives depends on the API version
+     * pinned to the sending account, so both must work — and the failure, if
+     * only one were handled, would be a silent null rather than an error.
+     */
+    it('reads the period end from the subscription (older API versions)', async () => {
+      const endsAt = Math.floor(Date.now() / 1000) + 30 * 86_400
+
+      await service.applyProviderEvent({
+        id: `evt_${suffix}_period_old`,
+        type: 'customer.subscription.updated',
+        createdAt: new Date('2026-07-01T00:00:00Z'),
+        data: {
+          id: `sub_${suffix}`,
+          customer: `cus_${suffix}`,
+          status: 'active',
+          current_period_end: endsAt,
+        },
+      })
+
+      const subscription = await getSystemDb().subscription.findFirstOrThrow({
+        where: { organizationId: state.orgId },
+        select: { currentPeriodEnd: true },
+      })
+
+      expect(subscription.currentPeriodEnd).not.toBeNull()
+      expect(Math.floor(subscription.currentPeriodEnd!.getTime() / 1000)).toBe(endsAt)
+    })
+
+    it('reads the period end from the item (2025-03-31.basil and later)', async () => {
+      const endsAt = Math.floor(Date.now() / 1000) + 60 * 86_400
+
+      await service.applyProviderEvent({
+        id: `evt_${suffix}_period_new`,
+        type: 'customer.subscription.updated',
+        createdAt: new Date('2026-07-02T00:00:00Z'),
+        data: {
+          id: `sub_${suffix}`,
+          customer: `cus_${suffix}`,
+          status: 'active',
+          // No subscription-level field at all, which is exactly what a newer
+          // API version sends.
+          items: { data: [{ current_period_end: endsAt, price: { id: 'price_x' } }] },
+        },
+      })
+
+      const subscription = await getSystemDb().subscription.findFirstOrThrow({
+        where: { organizationId: state.orgId },
+        select: { currentPeriodEnd: true },
+      })
+
+      expect(
+        subscription.currentPeriodEnd,
+        'a newer Stripe API version stored no renewal date',
+      ).not.toBeNull()
+      expect(Math.floor(subscription.currentPeriodEnd!.getTime() / 1000)).toBe(endsAt)
+    })
+
     it('still applies genuinely newer state', async () => {
       const laterAt = new Date('2026-06-02T09:00:00Z')
 

@@ -34,6 +34,16 @@ export interface S3Config {
 
 const SERVICE = 's3'
 
+/**
+ * How long to wait on the object store.
+ *
+ * Generous, because this covers transferring up to the 25 MB upload cap over
+ * whatever connection the host has — but bounded, because an unbounded `fetch`
+ * inside a serverless invocation holds that invocation until the platform kills
+ * it, and the user watches a spinner for the whole duration.
+ */
+const REQUEST_TIMEOUT_MS = 30_000
+
 export function createS3Driver(config: S3Config): StorageDriver {
   const endpoint = config.endpoint.replace(/\/+$/, '')
 
@@ -67,11 +77,28 @@ export function createS3Driver(config: S3Config): StorageDriver {
 
     headers.authorization = signRequest({ method, url, headers, payloadHash, config })
 
-    return fetch(url, {
-      method,
-      headers,
-      ...(body ? { body: body as BodyInit } : {}),
-    })
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+    try {
+      return await fetch(url, {
+        method,
+        headers,
+        ...(body ? { body: body as BodyInit } : {}),
+        signal: controller.signal,
+      })
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        // The key is safe to name — it is ours, not a credential — and without
+        // it a storage timeout is untraceable to a document.
+        throw new Error(
+          `Storage did not respond within ${REQUEST_TIMEOUT_MS / 1000} seconds (${method} ${key}).`,
+        )
+      }
+      throw error
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   return {

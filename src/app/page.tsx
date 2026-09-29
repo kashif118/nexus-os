@@ -16,6 +16,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { buttonVariants } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { clientEnv } from '@/kernel/config/env'
+import { CREATOR } from '@/lib/creator'
 
 /**
  * The front door.
@@ -153,11 +154,14 @@ export default function HomePage() {
         </section>
       </main>
 
-      <footer className="text-muted-foreground mt-auto space-y-2 text-xs">
+      <footer className="text-muted-foreground mt-auto space-y-3 text-xs">
         <Separator className="mb-6" />
         <p>
           {clientEnv.NEXT_PUBLIC_APP_NAME} — an AI-powered business operating system. AI features
           require a provider key; without one the assistant says so rather than inventing an answer.
+        </p>
+        <p>
+          Built by <span className="text-foreground font-medium">{CREATOR.name}</span>.
         </p>
       </footer>
     </div>

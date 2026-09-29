@@ -9,7 +9,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { isAppError } from '@/kernel/errors'
 import { requireCtxPage } from '@/kernel/tenancy/ctx'
-import { formatBytes } from '@/modules/documents/components/document-table'
+import { formatBytes } from '@/lib/format'
 import {
   DeleteDocumentButton,
   DocumentSettingsForm,

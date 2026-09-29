@@ -32,9 +32,3 @@ export function AvatarFallback({
     />
   )
 }
-
-/** Initials from a display name, for avatars with no image. */
-export function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).slice(0, 2)
-  return parts.map((part) => part.charAt(0).toUpperCase()).join('') || '?'
-}

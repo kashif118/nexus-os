@@ -9,7 +9,7 @@ import { formatMoney } from '@/lib/money'
 import { PlanControls } from '@/modules/billing/components/plan-controls'
 import { formatBytes, formatLimit } from '@/modules/billing/plans'
 import { getBillingOverview } from '@/modules/billing/queries'
-import { relativeTime } from '@/modules/notifications/components/notification-list'
+import { relativeTime } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Billing' }
 

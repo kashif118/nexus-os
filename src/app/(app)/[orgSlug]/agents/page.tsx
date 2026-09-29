@@ -14,7 +14,7 @@ import {
 } from '@/modules/ai/agents/components/agent-controls'
 import { listAgentsWithConfig, listPendingProposals, listRuns } from '@/modules/ai/agents/queries'
 import { listShareTargets } from '@/modules/documents/queries'
-import { relativeTime } from '@/modules/notifications/components/notification-list'
+import { relativeTime } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Agents' }
 

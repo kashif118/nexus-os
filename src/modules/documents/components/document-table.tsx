@@ -2,19 +2,7 @@
 
 import { DataTable, type Column } from '@/components/data/data-table'
 import { Badge } from '@/components/ui/badge'
-
-/** Human-readable size. Binary units, because storage quotas are quoted that way. */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let value = bytes / 1024
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit += 1
-  }
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`
-}
+import { formatBytes } from '@/lib/format'
 
 export interface DocumentRow {
   id: string

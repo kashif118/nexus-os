@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PERMISSION_CATALOGUE, type Permission } from '@/kernel/authz/catalogue'
 import { requireCtxPage } from '@/kernel/tenancy/ctx'
-import { relativeTime } from '@/modules/notifications/components/notification-list'
+import { relativeTime } from '@/lib/format'
 import {
   CreateApiKeyForm,
   RevokeApiKeyButton,

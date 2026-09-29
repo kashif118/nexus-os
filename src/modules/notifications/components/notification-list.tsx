@@ -8,6 +8,7 @@ import { useActionState, useEffect } from 'react'
 import { SubmitButton } from '@/components/forms/submit-button'
 import { EmptyState } from '@/components/feedback/states'
 import { Badge } from '@/components/ui/badge'
+import { relativeTime } from '@/lib/format'
 
 import { markAllReadAction, markReadAction, type FormState } from '../actions'
 
@@ -20,30 +21,6 @@ export interface NotificationRow {
   priority: string
   readAt: Date | null
   createdAt: Date
-}
-
-/** "3 minutes ago", without pulling in a date library for one string. */
-export function relativeTime(from: Date, now = new Date()): string {
-  const seconds = Math.round((now.getTime() - from.getTime()) / 1000)
-  if (seconds < 60) return 'just now'
-
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ['minute', 60],
-    ['hour', 3600],
-    ['day', 86_400],
-    ['week', 604_800],
-    ['month', 2_592_000],
-    ['year', 31_536_000],
-  ]
-
-  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
-  let chosen: [Intl.RelativeTimeFormatUnit, number] = units[0]!
-
-  for (const unit of units) {
-    if (seconds >= unit[1]) chosen = unit
-  }
-
-  return formatter.format(-Math.round(seconds / chosen[1]), chosen[0])
 }
 
 export function NotificationList({

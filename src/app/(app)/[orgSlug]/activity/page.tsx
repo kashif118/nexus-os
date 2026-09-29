@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { EmptyState, PageHeader } from '@/components/feedback/states'
 import { Card, CardContent } from '@/components/ui/card'
 import { requireCtxPage } from '@/kernel/tenancy/ctx'
-import { relativeTime } from '@/modules/notifications/components/notification-list'
+import { relativeTime } from '@/lib/format'
 import { listActivity } from '@/modules/notifications/queries'
 
 export const metadata: Metadata = { title: 'Activity' }

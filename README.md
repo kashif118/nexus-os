@@ -132,14 +132,15 @@ a port, so swapping providers is one file.
 
 ## Documentation
 
-| Document                                                   | Contents                                                      |
-| ---------------------------------------------------------- | ------------------------------------------------------------- |
-| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)           | Product, system and module architecture; stack decisions      |
-| [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md)               | Entity map, indexes, cascades, tenant isolation               |
-| [`docs/PLATFORM.md`](./docs/PLATFORM.md)                   | Folder structure, authentication, multi-tenancy, RBAC         |
-| [`docs/AI-AND-AUTOMATION.md`](./docs/AI-AND-AUTOMATION.md) | AI provider abstraction, agent runtime, workflow engine       |
-| [`docs/OPERATIONS.md`](./docs/OPERATIONS.md)               | API contracts, security, testing, **§Q deployment as built**  |
-| [`docs/ROADMAP.md`](./docs/ROADMAP.md)                     | Phases, risks, decision log, **§U every deviation from spec** |
+| Document                                                     | Contents                                                      |
+| ------------------------------------------------------------ | ------------------------------------------------------------- |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)             | Product, system and module architecture; stack decisions      |
+| [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md)                 | Entity map, indexes, cascades, tenant isolation               |
+| [`docs/PLATFORM.md`](./docs/PLATFORM.md)                     | Folder structure, authentication, multi-tenancy, RBAC         |
+| [`docs/AI-AND-AUTOMATION.md`](./docs/AI-AND-AUTOMATION.md)   | AI provider abstraction, agent runtime, workflow engine       |
+| [`docs/OPERATIONS.md`](./docs/OPERATIONS.md)                 | API contracts, security, testing, **§Q deployment as built**  |
+| [`docs/ROADMAP.md`](./docs/ROADMAP.md)                       | Phases, risks, decision log, **§U every deviation from spec** |
+| [`docs/ENGINEERING-REPORT.md`](./docs/ENGINEERING-REPORT.md) | The final report: every module, the numbers, and the limits   |
 
 `docs/ROADMAP.md` §U is worth reading on its own: it records every place the built system
 departs from the specification and why, including the defects the tests found.

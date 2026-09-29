@@ -17,10 +17,21 @@ blob-report/
 .playwright/
 
 # env — never commit real secrets (docs/OPERATIONS.md §P.4)
+#
+# Deny everything, then allow back the one template. The previous rules listed
+# .env, .env.local and .env.*.local — which left .env.production, .env.staging,
+# .env.development, .env.test and .env.backup committable. None existed, but
+# .env.production is a Next.js convention and exactly the name somebody reaches
+# for while setting up a deployment.
+#
+# Enumerating the variants means missing the one that mattered. This does not.
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
+
+# direnv, which holds `export SECRET=...`. Not used here, but it is the same
+# trap wearing a different name: `.env.*` does not match it.
+.envrc
 
 # prisma generated client
 src/generated/

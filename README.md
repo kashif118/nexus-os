@@ -1,43 +1,57 @@
 # NEXUS OS
 
-An AI-powered **business operating system**: work, money, people, clients and documents in
-one multi-tenant platform, with an automation engine and permission-scoped AI agents.
+An AI-powered **business operating system**: clients, projects, tasks, money, people and
+documents in one multi-tenant platform, with a workflow engine and AI agents that work
+through the same permissions a person does.
 
-> **Status: Phase 02 of 25 — Authentication.**
-> The architecture is specified in full under [`docs/`](./docs); application modules are
-> built phase by phase against it. This repository currently contains the toolchain, the
-> configuration kernel, the design system foundation, the identity schema and a complete
-> email/password authentication system — and nothing that pretends to be more than that.
-> Organizations, roles and permissions come next.
+Not a CRM with extra screens, and not a dashboard. It is the system a company actually runs
+on: an invoice raised in Finance is the row Analytics counts, the project Tasks belongs to,
+and the record an agent is allowed to read only if you are.
 
 ---
 
-## Documentation
+## What it does
 
-The specification is the source of truth for every phase. Read it before changing anything.
+| Module                  | What it is                                                                                                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CRM**                 | Companies, contacts, leads, a drag-and-drop deal pipeline, activities and tags. Converting a lead creates the company, contact and deal in one transaction.            |
+| **Projects**            | Members, milestones, budgets, health scoring, portfolio view. Visibility is per project, and a private project is invisible rather than forbidden.                     |
+| **Tasks**               | A board with drag-and-drop, dependencies that actually block, checklists, comments, labels and time. A blocked task says what is blocking it.                          |
+| **People**              | Profiles, teams, departments, skills, workload from real assignments. Pay data sits behind its own permission, denied even to most managers.                           |
+| **Finance**             | Invoices, payments, expenses with approval, budgets. Integer minor units throughout — there is no floating-point arithmetic anywhere on a money path.                  |
+| **Documents**           | Versioned files, folders, per-document sharing, attachment to any record, storage quota. A private document does not become public because a link leaked.              |
+| **Notifications**       | In-app and email, driven by a transactional outbox so a notification cannot be sent for a change that rolled back.                                                     |
+| **Workflows**           | Triggers, conditions, actions, approvals and delays, interpreted from a JSON graph. Runs are resumable and every step is recorded; a published version is immutable.   |
+| **Intelligence Center** | An assistant over your own data, and generated insights. With no provider key configured it says so; it does not invent an answer.                                     |
+| **AI agents**           | Five agents that propose and people who dispose. An agent's tools are an allowlist enforced at invocation, and it can never exceed the permissions of whoever runs it. |
+| **Analytics**           | Metrics computed live from your records, with period comparison, series and drill-down.                                                                                |
+| **Reports**             | Report definitions are parameters, not snapshots — reopening one recomputes it. CSV and printable export, with scheduling.                                             |
+| **Security Center**     | Sessions, login history, an audit log, API keys, and organization security policy.                                                                                     |
+| **Billing**             | Plans and entitlements, enforced on the server before the operation. Nothing marks a subscription paid except a signature-verified provider event.                     |
 
-| Document                                                   | Contents                                                      |
-| ---------------------------------------------------------- | ------------------------------------------------------------- |
-| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)           | Product, system and module architecture; tech-stack decisions |
-| [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md)               | ~78-table entity map, indexes, cascades, tenant isolation     |
-| [`docs/PLATFORM.md`](./docs/PLATFORM.md)                   | Folder structure, authentication, multi-tenancy, RBAC         |
-| [`docs/AI-AND-AUTOMATION.md`](./docs/AI-AND-AUTOMATION.md) | AI provider abstraction, agent runtime, workflow engine       |
-| [`docs/OPERATIONS.md`](./docs/OPERATIONS.md)               | API contracts, security, testing, deployment, env vars        |
-| [`docs/ROADMAP.md`](./docs/ROADMAP.md)                     | 25 phases, risks, build order, decision log                   |
+## The parts that were hard
 
-## Tech stack
-
-Next.js 16 (App Router) · React 19 · TypeScript 5.9 (strict) · Tailwind CSS v4 ·
-PostgreSQL + Prisma 7 · Zod 4 · Vitest · Playwright · ESLint (with architectural boundary
-enforcement) · Prettier.
-
-Planned in later phases: Auth.js v5, TanStack Query, Recharts, Stripe, S3-compatible
-storage, Redis, and a provider-agnostic AI layer defaulting to Anthropic.
+- **Tenant isolation is structural.** Every tenant table carries a non-nullable
+  `organizationId`, and a Prisma client extension injects it into every query — so forgetting
+  a `where` clause returns your own rows rather than somebody else's. A client-supplied
+  organization id that does not match the context throws rather than being silently rewritten.
+  A generated matrix tests read, count, update and delete against all **57** tenant tables, and
+  a schema-parsing test fails if a new tenant table is not registered.
+- **Authorization is one function.** 109 permissions, 7 system roles, per-resource grants, and
+  one rule that makes external access safe: a **denial beats any grant, including the owner's**.
+  A generated matrix covers every role against every permission.
+- **Money is integers.** Minor units as `bigint` with an ISO-4217 code, rates as basis points,
+  totals computed only on the server from the line items. An invoice is paid because payments
+  sum to it, not because a button was pressed.
+- **Events are transactional.** Domain events are written in the same transaction as the change
+  that caused them, then delivered with per-subscriber idempotency and retry.
+- **AI is bounded by the same authorization as a person.** Agents call typed tools; tools call
+  module query boundaries; those enforce the calling user's permissions. No agent holds a
+  database handle, and a prompt cannot widen a permission.
 
 ## Getting started
 
-**Requirements:** Node.js ≥ 20.11 and a PostgreSQL 15+ database (local or hosted — Neon is
-what the deployment design assumes).
+**Requirements:** Node.js ≥ 20.11 and PostgreSQL 15+ (local or hosted).
 
 ```bash
 # 1. Install dependencies
@@ -53,71 +67,44 @@ npm run db:start               # prints the DATABASE_URL to use
 # 3. Configure the environment
 cp .env.example .env.local     # then paste in the database URLs
 
-# 4. Generate the client and create the schema
+# 4. Generate the client, create the schema, seed the permission catalogue
 npm run db:generate
 npm run db:deploy
+npm run db:seed
 
 # 5. Start the development server
 npm run dev                    # http://localhost:3000
 ```
 
-### Database
+Then create an account at `/sign-up` and an organization. Email is printed to the server
+console rather than sent unless a transport is configured, so the verification link is in
+your terminal.
 
-`DATABASE_URL` is the **pooled** connection used at runtime; `DIRECT_DATABASE_URL` is the
-**unpooled** connection used by migrations (DDL through a transaction-mode pooler is
-unreliable). Both may point at the same server locally.
-
-The schema is split by domain across `prisma/schema/`. It currently holds the identity
-models — `User`, `Session`, `VerificationToken`, `LoginEvent` and `AuditLog`. They are
-deliberately tenant-free: a user is a global identity that will join organizations through
-`Membership` in the next phase.
+### Seeing it full rather than empty
 
 ```bash
-npm run db:start        # start a local PostgreSQL (no Docker/admin needed)
-npm run db:stop         # stop it
-npm run db:validate     # validate the schema
-npm run db:generate     # generate the Prisma client
-npm run db:migrate      # create + apply a migration (development)
-npm run db:deploy       # apply migrations (CI / production)
-npm run db:studio       # browse data
+npm run db:demo
 ```
 
-`npm run db:start` runs a real PostgreSQL server from a prebuilt binary into
-`.postgres-data/`. It exists so integration and end-to-end tests run against genuine
-Postgres semantics rather than a mock; CI uses a service container instead.
+Creates a demo organization — four people on four different roles, three clients, two
+projects, ten tasks and four invoices in four different states — by calling the same
+services the application calls. Nothing is inserted behind them, so the invoice totals are
+computed by the finance service and the Command Center figures are figures the product
+produced. It prints the sign-in details, refuses to run against a production database, and
+refuses to run twice.
 
-## Authentication
+### Verifying the build
 
-Email and password, with server-side sessions. The design — and the reason it departs from
-the original Auth.js plan — is recorded in [`docs/ROADMAP.md`](./docs/ROADMAP.md) §U9.
+```bash
+npm run verify        # typecheck · lint · format · env sync · 1,031 unit and integration tests
+npm run test:e2e      # 49 Playwright journeys against a production build
+npm run build         # production build
+npm run check:bundle  # client bundle budget, gzipped
+```
 
-| Property         | Implementation                                                                 |
-| ---------------- | ------------------------------------------------------------------------------ |
-| Password hashing | argon2id (19 MiB, t=2, p=1) via `@node-rs/argon2`                              |
-| Session token    | 256-bit random value in an httpOnly cookie, stored only as a SHA-256 digest    |
-| Session lifetime | 30 days, sliding, refreshed at most hourly; revocable from the account page    |
-| Route protection | `requireUserPage()` in the server layout — the edge proxy only redirects early |
-| Throttling       | 5 failures per email / 20 per IP in 15 minutes, counted from `LoginEvent`      |
-| Enumeration      | Sign-in and password reset respond identically for known and unknown addresses |
-| Reset tokens     | Single-use, 30-minute TTL; every session is revoked when one is used           |
-
-Email is not delivered yet: `getMailer()` prints the message to the server console until a
-Resend adapter is configured. The flows themselves are complete and covered by tests.
-
-## Scripts
-
-| Script                            | Purpose                                          |
-| --------------------------------- | ------------------------------------------------ |
-| `npm run dev`                     | development server                               |
-| `npm run build` / `start`         | production build / serve                         |
-| `npm run typecheck`               | `tsc --noEmit`                                   |
-| `npm run lint`                    | ESLint, including architectural boundary rules   |
-| `npm run format` / `format:check` | Prettier                                         |
-| `npm run check:env`               | assert `.env.example` matches the Zod env schema |
-| `npm test` / `test:watch`         | Vitest unit + integration tests                  |
-| `npm run db:start` / `db:stop`    | local PostgreSQL for development and tests       |
-| `npm run test:e2e`                | Playwright end-to-end tests                      |
-| `npm run verify`                  | everything CI runs, in one command               |
+`npm run db:start` runs a real PostgreSQL from a prebuilt binary into `.postgres-data/`, so
+integration tests run against genuine Postgres semantics rather than a mock. CI uses a
+service container instead.
 
 ## Architecture in one screen
 
@@ -133,26 +120,54 @@ modules/<m>/repository         Prisma access only
 lib/db                         org-scoped Prisma client
 ```
 
-These layers are enforced by `eslint-plugin-boundaries`, not by convention: the UI cannot
-import a repository, services cannot import the database client, and AI tools can only
-reach data through services that check permissions. Run `npm run lint` to see it work.
+Enforced by `eslint-plugin-boundaries`, not by convention: the UI cannot import a repository,
+a service cannot import the database client, and an AI tool can only reach data through a
+module boundary that checks permissions. `npm run lint` is where you see it work.
 
-Three further invariants the codebase is built to guarantee:
+**Stack:** Next.js 16 (App Router, Server Actions) · React 19 · TypeScript 5.9 strict with
+`noUncheckedIndexedAccess` · Tailwind CSS v4 · PostgreSQL + Prisma 7 (driver adapters) ·
+Zod 4 · Vitest · Playwright · ESLint · Prettier. No state-management library, no data-fetching
+library, no ORM escape hatches, and no AI SDK — the Anthropic adapter is a `fetch` call behind
+a port, so swapping providers is one file.
 
-1. **Tenant isolation is structural** — every tenant table carries a non-nullable
-   `organizationId`, and the Prisma client extension injects it into every query so the safe
-   path is the default one (`docs/PLATFORM.md` §H.3).
-2. **Configuration is validated** — `process.env` is unreadable outside
-   `src/kernel/config/env.ts`, which parses it with Zod and fails the boot on a bad value.
-3. **AI never queries the database** — agents call typed tools, tools call services, and
-   services enforce the _calling user's_ permissions (`docs/AI-AND-AUTOMATION.md` §J.3).
+## Documentation
 
-## Roadmap
+| Document                                                   | Contents                                                      |
+| ---------------------------------------------------------- | ------------------------------------------------------------- |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)           | Product, system and module architecture; stack decisions      |
+| [`docs/DATA-MODEL.md`](./docs/DATA-MODEL.md)               | Entity map, indexes, cascades, tenant isolation               |
+| [`docs/PLATFORM.md`](./docs/PLATFORM.md)                   | Folder structure, authentication, multi-tenancy, RBAC         |
+| [`docs/AI-AND-AUTOMATION.md`](./docs/AI-AND-AUTOMATION.md) | AI provider abstraction, agent runtime, workflow engine       |
+| [`docs/OPERATIONS.md`](./docs/OPERATIONS.md)               | API contracts, security, testing, **§Q deployment as built**  |
+| [`docs/ROADMAP.md`](./docs/ROADMAP.md)                     | Phases, risks, decision log, **§U every deviation from spec** |
 
-Phases 02–25 cover the platform kernel, authentication, multi-tenancy, RBAC, the design
-system, and then the application modules (Projects, Tasks, CRM, People, Finance, Documents,
-Communication), the workflow engine, the AI layer, analytics, reporting, security, billing,
-hardening and launch. See [`docs/ROADMAP.md`](./docs/ROADMAP.md) §Q.
+`docs/ROADMAP.md` §U is worth reading on its own: it records every place the built system
+departs from the specification and why, including the defects the tests found.
+
+## Deploying
+
+`docs/OPERATIONS.md` §Q has the exact steps, the required environment variables, and what each
+optional one turns on. The short version: provision Postgres, set `DATABASE_URL`,
+`DIRECT_DATABASE_URL`, `AUTH_SECRET` and `NEXT_PUBLIC_APP_URL`, run `npm run db:deploy` and
+`npm run db:seed`, deploy, and check `GET /api/health`.
+
+## What this is not
+
+Stated plainly, because the difference between "planned" and "present" is where trust is lost.
+
+- **No error-reporting service, alerting, or uptime monitoring.** `/api/health` exists to be
+  polled; nothing polls it.
+- **No cache layer and no nightly rollups.** Everything is computed per request, which the
+  query-budget tests keep affordable and which will need revisiting long before a tenant has
+  millions of rows.
+- **No Postgres row-level security.** Isolation is enforced by the scoped client and proven by
+  the matrix; RLS is the defence-in-depth layer that is not there.
+- **No malware scanning on upload.** Documents record a `SKIPPED` scan status rather than
+  claiming a clean one.
+- **The Anthropic and Stripe adapters have never been run against the live services.** They are
+  written to the documented contracts and tested against fixtures.
+- **Unit and integration coverage is 50% of statements** across `kernel`, `lib` and `modules`.
+  UI is covered by the end-to-end suite instead, which Vitest does not instrument.
 
 ## License
 

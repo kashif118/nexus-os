@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
  *
  * Interactive components built on Radix (Dialog, DropdownMenu, Popover, …) and
  * the `asChild` composition pattern arrive with the full design system in
- * Phase 06; this is the foundation they will be built against.
+ * Phase 06, which is built against this.
  */
 const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',

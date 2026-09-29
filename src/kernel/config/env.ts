@@ -19,8 +19,12 @@ export const serverEnvSchema = z.object({
 
   /**
    * Pooled connection string used at runtime (PgBouncer / Neon pooler).
-   * Optional in Phase 01: no code opens a connection yet, so requiring it would
-   * block `npm run dev` for no reason. Phase 02 makes it required.
+   *
+   * Optional in the schema, and required in practice: `getDatabaseUrl()` throws
+   * if it is absent. The distinction is deliberate — `next build` does not open
+   * a connection, and a build that cannot run without a live database is a
+   * build that cannot run in CI. The failure therefore happens at first use,
+   * with a message that says which variable is missing.
    */
   DATABASE_URL: z.url().optional(),
 

@@ -1,139 +1,165 @@
-import { CircleDashed, GitBranch, ShieldCheck, Workflow } from 'lucide-react'
+import {
+  BarChart3,
+  Bot,
+  Briefcase,
+  FileText,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  Wallet,
+  Workflow,
+} from 'lucide-react'
+import Link from 'next/link'
 
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { buttonVariants } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import { clientEnv } from '@/kernel/config/env'
 
 /**
- * Build status page for the foundation phase.
+ * The front door.
  *
- * This deliberately shows only what actually exists. No placeholder metrics, no
- * mock dashboard: the Command Center is Phase 14 and will be rendered from real
- * data (docs/ROADMAP.md §Q). Its purpose here is to prove the toolchain, the
- * design tokens and the theme switch work end to end.
+ * The only page a signed-out visitor sees, so it has one job: say what this is
+ * and get them to an account. Every claim below names something that exists and
+ * can be used within a minute of signing up — there are no screenshots of
+ * features that are not here, and no numbers invented to look impressive.
  */
 
-type PhaseState = 'complete' | 'next' | 'planned'
-
-const PHASES: ReadonlyArray<{ id: string; name: string; state: PhaseState }> = [
-  { id: '01', name: 'Foundation', state: 'complete' },
-  { id: '02', name: 'Platform kernel', state: 'next' },
-  { id: '03', name: 'Authentication', state: 'planned' },
-  { id: '04', name: 'Multi-tenancy', state: 'planned' },
-  { id: '05', name: 'RBAC', state: 'planned' },
-  { id: '06', name: 'Design system', state: 'planned' },
-  { id: '07', name: 'Projects', state: 'planned' },
-  { id: '08', name: 'Tasks', state: 'planned' },
-]
-
-const FOUNDATION = [
+const MODULES = [
   {
-    Icon: GitBranch,
-    title: 'Toolchain',
-    body: 'Next.js 16 · React 19 · TypeScript strict with noUncheckedIndexedAccess · Tailwind v4 · Vitest · Playwright · GitHub Actions.',
-  },
-  {
-    Icon: ShieldCheck,
-    title: 'Configuration',
-    body: 'Environment variables parsed by Zod at boot. process.env is unreadable outside the config kernel, and .env.example is diffed against the schema in CI.',
+    Icon: Briefcase,
+    title: 'Clients and pipeline',
+    body: 'Companies, contacts, leads and a drag-and-drop deal pipeline. A lead converts into a company, a contact and a deal in one step, with the history kept.',
   },
   {
     Icon: Workflow,
-    title: 'Layering',
-    body: 'The app → transport → service → repository → db boundaries from the architecture are enforced by eslint-plugin-boundaries, not by review.',
+    title: 'Projects and tasks',
+    body: 'Projects with members, milestones and budgets; tasks on a board with dependencies, checklists and comments. A task that is blocked says what by.',
   },
   {
-    Icon: CircleDashed,
-    title: 'Design tokens',
-    body: 'One token set drives both themes. Components consume semantic variables, so no component holds a literal colour value.',
+    Icon: Wallet,
+    title: 'Money',
+    body: 'Invoices, payments, expenses and budgets in integer minor units — no floating point anywhere on a money path. An invoice is paid because payments add up to it, not because somebody pressed a button.',
+  },
+  {
+    Icon: Users,
+    title: 'People',
+    body: 'Profiles, teams, departments, skills and a workload view that reads real assignments. Pay information is a separate permission from everything else.',
+  },
+  {
+    Icon: FileText,
+    title: 'Documents',
+    body: 'Versioned files with folders, per-document sharing and attachment to any record. A private document stays private when the link is guessed.',
+  },
+  {
+    Icon: BarChart3,
+    title: 'Analytics and reports',
+    body: 'Metrics computed live from your own records, with period comparison and drill-down. Reports are parameters, not snapshots, so reopening one recomputes it.',
+  },
+  {
+    Icon: Sparkles,
+    title: 'Automation',
+    body: 'A visual workflow engine: triggers, conditions, approvals and delays. Runs are resumable, and every step is recorded.',
+  },
+  {
+    Icon: Bot,
+    title: 'AI agents',
+    body: 'Agents that propose and people who dispose. An agent works through the same authorization as a person, and nothing it suggests happens until somebody accepts it.',
+  },
+  {
+    Icon: ShieldCheck,
+    title: 'Security',
+    body: 'Sessions, login history, an audit log, API keys and org security policies. Seven roles, 109 permissions, and a denial that beats any grant.',
   },
 ]
 
-const STATE_STYLES: Record<
-  PhaseState,
-  { variant: 'success' | 'default' | 'neutral'; label: string }
-> = {
-  complete: { variant: 'success', label: 'Complete' },
-  next: { variant: 'default', label: 'Next' },
-  planned: { variant: 'neutral', label: 'Planned' },
-}
-
 export default function HomePage() {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-10 px-6 py-12 md:py-20">
-      <header className="flex flex-wrap items-start justify-between gap-6">
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <div
-              aria-hidden="true"
-              className="bg-primary text-primary-foreground grid size-9 place-items-center rounded-lg font-mono text-sm font-bold"
-            >
-              N
-            </div>
-            <span className="text-lg font-semibold tracking-tight">
-              {clientEnv.NEXT_PUBLIC_APP_NAME}
-            </span>
-            <Badge variant="outline">Phase 01</Badge>
+    <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-12 px-6 py-10 md:py-16">
+      <header className="flex flex-wrap items-center justify-between gap-6">
+        <div className="flex items-center gap-3">
+          <div
+            aria-hidden="true"
+            className="bg-primary text-primary-foreground grid size-9 place-items-center rounded-lg font-mono text-sm font-bold"
+          >
+            N
           </div>
-          <p className="text-muted-foreground max-w-xl text-sm leading-relaxed">
-            An AI-powered business operating system. The foundation is in place; application modules
-            are built phase by phase against the specification in{' '}
-            <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs">docs/</code>.
-          </p>
+          <span className="text-lg font-semibold tracking-tight">
+            {clientEnv.NEXT_PUBLIC_APP_NAME}
+          </span>
         </div>
-        <ThemeToggle />
+
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <Link href="/sign-in" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+            Sign in
+          </Link>
+          <Link href="/sign-up" className={buttonVariants({ size: 'sm' })}>
+            Create an account
+          </Link>
+        </div>
       </header>
 
-      <Separator />
+      <main className="space-y-12">
+        <section className="max-w-3xl space-y-5">
+          <h1 className="text-3xl font-semibold tracking-tight text-balance md:text-4xl">
+            One system for the work, the money and the people.
+          </h1>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            Most companies run on five tools that disagree with each other. {}
+            {clientEnv.NEXT_PUBLIC_APP_NAME} is a single operating system for a business: clients,
+            projects, tasks, invoices, people and documents in one place, with an automation engine
+            and AI agents that work through the same permissions a person does.
+          </p>
+          <p className="text-muted-foreground text-base leading-relaxed">
+            Every organization&rsquo;s data is isolated at the database layer, not by a filter
+            somebody has to remember to write. The invoice on the finance page is the same row the
+            dashboard counts.
+          </p>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <Link href="/sign-up" className={buttonVariants()}>
+              Create an organization
+            </Link>
+            <Link href="/sign-in" className={buttonVariants({ variant: 'outline' })}>
+              Sign in
+            </Link>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            Free to start: ten members, ten projects, 2&nbsp;GB of documents. No card.
+          </p>
+        </section>
 
-      <section aria-labelledby="foundation-heading" className="space-y-4">
-        <h2 id="foundation-heading" className="text-sm font-semibold tracking-tight">
-          What this phase established
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {FOUNDATION.map(({ Icon, title, body }) => (
-            <Card key={title}>
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Icon className="text-primary size-4" aria-hidden="true" />
-                  <CardTitle>{title}</CardTitle>
-                </div>
-                <CardDescription className="leading-relaxed">{body}</CardDescription>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
-      </section>
+        <Separator />
 
-      <section aria-labelledby="phases-heading" className="space-y-4">
-        <h2 id="phases-heading" className="text-sm font-semibold tracking-tight">
-          Build order
-        </h2>
-        <Card>
-          <CardContent className="divide-border divide-y pt-0">
-            {PHASES.map((phase) => {
-              const state = STATE_STYLES[phase.state]
-              return (
-                <div key={phase.id} className="flex items-center justify-between gap-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <span className="text-muted-foreground tabular font-mono text-xs">
-                      {phase.id}
-                    </span>
-                    <span className="text-sm font-medium">{phase.name}</span>
+        <section aria-labelledby="modules-heading" className="space-y-5">
+          <h2 id="modules-heading" className="text-sm font-semibold tracking-tight">
+            What is in it
+          </h2>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {MODULES.map(({ Icon, title, body }) => (
+              <Card key={title}>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Icon className="text-primary size-4" aria-hidden="true" />
+                    <CardTitle className="text-base">{title}</CardTitle>
                   </div>
-                  <Badge variant={state.variant}>{state.label}</Badge>
-                </div>
-              )
-            })}
-          </CardContent>
-        </Card>
-        <p className="text-muted-foreground text-xs">
-          Full phase plan: <code className="font-mono">docs/ROADMAP.md</code> §Q. Twenty-five
-          phases; the eight above are the near term.
+                  <CardDescription className="leading-relaxed">{body}</CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        </section>
+      </main>
+
+      <footer className="text-muted-foreground mt-auto space-y-2 text-xs">
+        <Separator className="mb-6" />
+        <p>
+          {clientEnv.NEXT_PUBLIC_APP_NAME} — an AI-powered business operating system. AI features
+          require a provider key; without one the assistant says so rather than inventing an answer.
         </p>
-      </section>
-    </main>
+      </footer>
+    </div>
   )
 }

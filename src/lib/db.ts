@@ -43,6 +43,39 @@ export function getSystemDb(): PrismaClient {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Query instrumentation                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Count the scoped queries a block of work issues.
+ *
+ * An N+1 is otherwise something you notice as "this page feels slow", long
+ * after it shipped. With this it is a number a test can hold to: the
+ * query-budget suite loads the same list at ten rows and at several hundred and
+ * requires the count not to move. A regression then fails a build instead of
+ * degrading quietly.
+ *
+ * Nothing is counted unless a measurement is in progress, so the cost in
+ * production is one null check per query.
+ */
+let activeMeter: { count: number } | null = null
+
+export async function measureQueries<T>(
+  work: () => Promise<T>,
+): Promise<{ value: T; queries: number }> {
+  const meter = { count: 0 }
+  const previous = activeMeter
+  activeMeter = meter
+
+  try {
+    const value = await work()
+    return { value, queries: meter.count }
+  } finally {
+    activeMeter = previous
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /* Tenant model registry                                                       */
 /* -------------------------------------------------------------------------- */
 
@@ -273,6 +306,7 @@ function createOrgScopedClient(orgId: string) {
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
+          if (activeMeter) activeMeter.count += 1
           if (!TENANT_MODELS.has(model)) return query(args)
 
           const typedArgs = (args ?? {}) as Record<string, unknown>
@@ -338,21 +372,44 @@ function createOrgScopedClient(orgId: string) {
 export type OrgScopedClient = ReturnType<typeof createOrgScopedClient>
 
 /**
+ * How many org-scoped clients to keep.
+ *
+ * An extended client is a thin wrapper over the shared connection pool, so
+ * caching one per organization is cheap — but "one per organization" on a
+ * long-lived server with thousands of tenants is an unbounded map, which is a
+ * slow leak rather than a cache. Least-recently-used eviction keeps the working
+ * set (the tenants actually being served by this instance) and drops the rest;
+ * a miss costs one object construction, not a connection.
+ */
+const MAX_CACHED_ORG_CLIENTS = 128
+
+/**
  * The org-scoped client for a tenant.
  *
  * Repositories receive this and can no longer write an unscoped query by
- * accident. Instances are cached per organization for the life of the process,
- * since an extended client is a thin wrapper over the shared connection pool.
+ * accident.
  */
 export function getDb(orgId: string): OrgScopedClient {
   if (!orgId) throw new Error('getDb() requires an organization id.')
-  globalForPrisma.orgClients ??= new Map()
+  const cache = (globalForPrisma.orgClients ??= new Map())
 
-  const cached = globalForPrisma.orgClients.get(orgId)
-  if (cached) return cached
+  const cached = cache.get(orgId)
+  if (cached) {
+    // Re-insert so this tenant becomes the most recently used. A Map preserves
+    // insertion order, which is all the recency tracking this needs.
+    cache.delete(orgId)
+    cache.set(orgId, cached)
+    return cached
+  }
 
   const client = createOrgScopedClient(orgId)
-  globalForPrisma.orgClients.set(orgId, client)
+  cache.set(orgId, client)
+
+  if (cache.size > MAX_CACHED_ORG_CLIENTS) {
+    const oldest = cache.keys().next()
+    if (!oldest.done) cache.delete(oldest.value)
+  }
+
   return client
 }
 

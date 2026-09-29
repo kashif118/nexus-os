@@ -2,14 +2,16 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
+import { Suspense } from 'react'
+
 import { BarChart, ChangeBadge, TrendChart } from '@/components/data/chart'
-import { PageHeader } from '@/components/feedback/states'
+import { CardSkeleton, PageHeader } from '@/components/feedback/states'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { isAppError } from '@/kernel/errors'
 import { requireCtxPage } from '@/kernel/tenancy/ctx'
 import { formatMoney } from '@/lib/money'
 import { getAnalytics } from '@/modules/analytics/queries'
-import { PERIODS } from '@/modules/analytics/periods'
+import { isPeriodKey, PERIODS, type PeriodKey } from '@/modules/analytics/periods'
 
 export const metadata: Metadata = { title: 'Analytics' }
 
@@ -21,6 +23,20 @@ const PERIOD_LABELS: Record<string, string> = {
   ytd: 'Year to date',
 }
 
+/**
+ * Analytics.
+ *
+ * The page shell — the title and the period selector — renders without waiting
+ * for a single query, and the metrics stream in behind a Suspense boundary.
+ * That matters here more than anywhere else in the product: this page computes
+ * every metric a role may see plus a series for each one that has it, which is
+ * around thirty aggregates. They run in parallel and each is indexed, but
+ * "fast" is still hundreds of milliseconds, and a period selector that does not
+ * respond until the numbers arrive feels broken rather than busy.
+ *
+ * The selected period is read from the URL rather than from the result, so
+ * switching period highlights the new choice immediately.
+ */
 export default async function AnalyticsPage({
   params,
   searchParams,
@@ -29,14 +45,62 @@ export default async function AnalyticsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { orgSlug } = await params
-  const ctx = await requireCtxPage(orgSlug)
+  await requireCtxPage(orgSlug)
 
   const resolved = await searchParams
   const requested = Array.isArray(resolved.period) ? resolved.period[0] : resolved.period
+  const period: PeriodKey = requested && isPeriodKey(requested) ? requested : '30d'
+
+  return (
+    <div className="mx-auto w-full max-w-6xl space-y-6">
+      <PageHeader title="Analytics" description="Computed live from your records, in UTC." />
+
+      <nav className="flex flex-wrap gap-1 text-xs" aria-label="Period">
+        {PERIODS.map((entry) => (
+          <Link
+            key={entry}
+            href={`/${orgSlug}/analytics?period=${entry}`}
+            aria-current={period === entry ? 'true' : undefined}
+            className={`rounded-md px-2.5 py-1 ${
+              period === entry ? 'bg-accent' : 'hover:bg-accent/60'
+            }`}
+          >
+            {PERIOD_LABELS[entry]}
+          </Link>
+        ))}
+      </nav>
+
+      <Suspense key={period} fallback={<AnalyticsSkeleton />}>
+        <AnalyticsBody orgSlug={orgSlug} period={period} />
+      </Suspense>
+    </div>
+  )
+}
+
+function AnalyticsSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Computing metrics</span>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 8 }, (_, index) => (
+          <CardSkeleton key={index} />
+        ))}
+      </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {Array.from({ length: 2 }, (_, index) => (
+          <CardSkeleton key={index} className="h-64" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+async function AnalyticsBody({ orgSlug, period }: { orgSlug: string; period: PeriodKey }) {
+  const ctx = await requireCtxPage(orgSlug)
 
   let analytics: Awaited<ReturnType<typeof getAnalytics>>
   try {
-    analytics = await getAnalytics(ctx, { period: requested, orgSlug })
+    analytics = await getAnalytics(ctx, { period, orgSlug })
   } catch (error) {
     if (isAppError(error) && error.code === 'FORBIDDEN') notFound()
     throw error
@@ -58,26 +122,8 @@ export default async function AnalyticsPage({
   const countAxis = (value: number) => new Intl.NumberFormat('en').format(Math.round(value))
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <PageHeader
-        title="Analytics"
-        description={`${analytics.rangeLabel} · computed live from your records, in UTC.`}
-      />
-
-      <nav className="flex flex-wrap gap-1 text-xs" aria-label="Period">
-        {PERIODS.map((period) => (
-          <Link
-            key={period}
-            href={`/${orgSlug}/analytics?period=${period}`}
-            aria-current={analytics.period === period ? 'true' : undefined}
-            className={`rounded-md px-2.5 py-1 ${
-              analytics.period === period ? 'bg-accent' : 'hover:bg-accent/60'
-            }`}
-          >
-            {PERIOD_LABELS[period]}
-          </Link>
-        ))}
-      </nav>
+    <div className="space-y-6">
+      <p className="text-muted-foreground text-sm">{analytics.rangeLabel}.</p>
 
       {analytics.metrics.length === 0 ? (
         <Card>

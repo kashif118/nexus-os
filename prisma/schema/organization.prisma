@@ -97,6 +97,7 @@ model Organization {
 
   outboxEvents            OutboxEvent[]
   aiExecutions            AIExecution[]
+  metricSnapshots         MetricSnapshot[]
   aiAgentConfigs          AIAgentConfig[]
   aiAgentRuns             AIAgentRun[]
   aiAgentSteps            AIAgentStep[]

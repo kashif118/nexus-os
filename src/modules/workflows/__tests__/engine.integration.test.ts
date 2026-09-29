@@ -171,7 +171,6 @@ const overdueEvent = (totalMinor: number, number = 'INV-0001') => ({
 
 describe.skipIf(!hasDatabase)('Workflow engine', () => {
   beforeAll(async () => {
-
     state.orgId = await seedOrg(SLUG, 'owner')
     state.otherOrgId = await seedOrg(OTHER_SLUG, 'otherOwner')
 

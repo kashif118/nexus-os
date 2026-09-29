@@ -1,0 +1,48 @@
+// NEXUS OS — analytics (docs/DATA-MODEL.md §E.1.12).
+//
+// One table, and a deliberate decision about what it is FOR.
+//
+// `MetricSnapshot` is a CACHE of an answer that can always be recomputed from
+// the source rows. It exists so a dashboard covering two years does not run
+// twenty aggregate queries per page load — not because the numbers live here.
+// Every metric in `modules/analytics/metrics.ts` can compute itself live, and
+// the snapshot is only ever written by that same computation.
+//
+// The consequence worth stating: a stale snapshot is a performance artefact,
+// never a correctness one. Anything a person acts on — an invoice total, a
+// balance — is read live from its own table, and nothing in this file is the
+// authority for a number that matters.
+
+enum MetricPeriod {
+  DAY
+  WEEK
+  MONTH
+}
+
+model MetricSnapshot {
+  id             String @id @default(cuid())
+  organizationId String
+
+  /// Registry key, e.g. "revenue.received".
+  metric String
+
+  /// Optional breakdown: "project", "member", "stage".
+  dimension   String?
+  dimensionId String?
+
+  periodType  MetricPeriod
+  periodStart DateTime
+
+  /// Counts, percentages and ratios.
+  valueNumeric Float?
+  /// Money, in minor units. Never stored as a float.
+  valueMinor   BigInt?
+  currency     String? @db.Char(3)
+
+  computedAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, metric, dimension, dimensionId, periodType, periodStart])
+  @@index([organizationId, metric, periodStart])
+}

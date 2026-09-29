@@ -119,6 +119,9 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set<string>([
   'NotificationPreference',
   'ActivityLog',
 
+  // Analytics
+  'MetricSnapshot',
+
   // AI
   'AIExecution',
   'AIUsageCounter',

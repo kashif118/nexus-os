@@ -123,6 +123,10 @@ export const TENANT_MODELS: ReadonlySet<string> = new Set<string>([
   'MetricSnapshot',
   'Report',
 
+  // Security
+  'ApiKey',
+  'SecurityPolicy',
+
   // AI
   'AIExecution',
   'AIUsageCounter',

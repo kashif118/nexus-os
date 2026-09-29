@@ -99,6 +99,8 @@ model Organization {
   aiExecutions            AIExecution[]
   metricSnapshots         MetricSnapshot[]
   reports                 Report[]
+  apiKeys                 ApiKey[]
+  securityPolicy          SecurityPolicy?
   aiAgentConfigs          AIAgentConfig[]
   aiAgentRuns             AIAgentRun[]
   aiAgentSteps            AIAgentStep[]
@@ -173,6 +175,7 @@ model Membership {
   workflowsOwned          Workflow[]               @relation("WorkflowOwner")
   insightsDismissed       AIInsight[]              @relation("InsightDismisser")
   agentsOwned             AIAgentConfig[]          @relation("AgentOwner")
+  apiKeysCreated          ApiKey[]                 @relation("ApiKeyCreator")
   proposalsDecided        AIProposal[]             @relation("ProposalDecider")
   agentMemories           AIMemory[]               @relation("MemoryOwner")
   aiConversations         AIConversation[]         @relation("ConversationOwner")

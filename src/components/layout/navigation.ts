@@ -92,6 +92,19 @@ export const NAVIGATION: NavDefinition[] = [
     section: 'Administration',
   },
   {
+    href: '/settings/security',
+    label: 'Security',
+    icon: 'roles',
+    section: 'Administration',
+  },
+  {
+    href: '/settings/audit',
+    label: 'Audit log',
+    icon: 'settings',
+    section: 'Administration',
+    requires: ['security.loginhistory.view'],
+  },
+  {
     href: '/settings/roles',
     label: 'Roles',
     icon: 'roles',

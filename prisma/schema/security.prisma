@@ -1,0 +1,65 @@
+// NEXUS OS — security (docs/OPERATIONS.md §N).
+//
+// Two things live here, and both follow the same rule as sessions: **a secret
+// is stored only as a digest.** A database leak must not hand anybody a working
+// credential. The plaintext exists exactly once, in the response that created
+// it, and is never retrievable afterwards — which is why the UI says so at the
+// moment of creation rather than offering a "reveal" that could not work.
+
+model ApiKey {
+  id             String @id @default(cuid())
+  organizationId String
+
+  name String
+
+  /// The first characters of the key, shown in listings so a person can tell
+  /// two keys apart without the secret being recoverable.
+  prefix String
+
+  /// SHA-256 of the full key. The key itself is never stored.
+  tokenHash String @unique
+
+  /// Permission keys this key may exercise, intersected with the creator's own
+  /// permissions at every request. A key can never outgrow the person who made
+  /// it, and loses access when they do.
+  scopes String[] @default([])
+
+  createdByMembershipId String?
+
+  lastUsedAt DateTime?
+  lastUsedIp String?
+
+  expiresAt DateTime?
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    Membership?  @relation("ApiKeyCreator", fields: [createdByMembershipId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, revokedAt])
+}
+
+/// Per-organization security settings.
+///
+/// One row per organization, created on demand. Every field has a safe default,
+/// so an organization that never opens this screen is not less secure than one
+/// that does.
+model SecurityPolicy {
+  id             String @id @default(cuid())
+  organizationId String @unique
+
+  /// How long a session may live without being used, in minutes.
+  sessionIdleMinutes Int @default(10080)
+
+  /// Refuse sign-in outside these CIDR ranges. Empty means no restriction —
+  /// and the UI warns that an incorrect entry locks everybody out.
+  allowedIpRanges String[] @default([])
+
+  /// Warn when somebody signs in from an address they have not used before.
+  alertOnNewIp Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}

@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 
+import { reportBoundaryError } from '@/components/observability/client-error-reporter'
 import { Button } from '@/components/ui/button'
 
 /**
@@ -11,11 +12,10 @@ import { Button } from '@/components/ui/button'
  * so a support request can be tied to a server log entry — the real detail is
  * already in the server log under that digest.
  *
- * This logs to the console rather than through the structured logger, and that
- * is not an oversight: this boundary runs in the browser, where there is no log
- * aggregator to write to and no secret worth formatting for one. An error
- * reporting service belongs here, and is named in the deployment notes as a
- * thing this build does not include.
+ * It logs to the console AND posts to this application's own telemetry
+ * endpoint, which forwards through the same reporter and the same redaction the
+ * server uses. The console call stays because it is what a developer with the
+ * tab open actually reads.
  */
 export default function RouteError({
   error,
@@ -26,6 +26,7 @@ export default function RouteError({
 }) {
   useEffect(() => {
     console.error(error)
+    reportBoundaryError(error)
   }, [error])
 
   return (

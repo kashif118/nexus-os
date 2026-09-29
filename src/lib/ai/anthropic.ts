@@ -53,6 +53,43 @@ export interface AnthropicConfig {
   baseUrl?: string
 }
 
+/**
+ * Retry policy.
+ *
+ * A model provider returns 429 when you are over its rate limit and 529 when it
+ * is overloaded, and both are routinely transient. Failing the user's request
+ * on the first one wastes a retry the provider is explicitly inviting.
+ *
+ * Bounded deliberately: two retries, and only on statuses that say "try again".
+ * A 400 is a bug in the request and retrying it just costs time; a 401 is a bad
+ * key and retrying it is how you get a key locked.
+ *
+ * The total wait is capped so that retrying cannot exceed the request timeout
+ * the caller asked for — a retry that outlives its own deadline is worse than
+ * no retry, because the user has already gone.
+ */
+const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 529])
+const MAX_ATTEMPTS = 3
+const BASE_BACKOFF_MS = 500
+const MAX_BACKOFF_MS = 8_000
+
+/** Honour `retry-after` when the provider sends one, else exponential backoff. */
+export function retryDelayMs(attempt: number, retryAfterHeader: string | null): number {
+  if (retryAfterHeader) {
+    const seconds = Number.parseInt(retryAfterHeader, 10)
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(seconds * 1000, MAX_BACKOFF_MS)
+    }
+  }
+
+  // Full jitter. Without it, every caller that hit the same rate limit retries
+  // in lockstep and hits it again together.
+  const ceiling = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS)
+  return Math.round(Math.random() * ceiling)
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 export function createAnthropicProvider(config: AnthropicConfig): LanguageModelProvider {
   const url = config.baseUrl ?? API_URL
 
@@ -97,38 +134,76 @@ export function createAnthropicProvider(config: AnthropicConfig): LanguageModelP
     },
 
     async generate(request, model) {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), request.timeoutMs ?? 60_000)
+      const budgetMs = request.timeoutMs ?? 60_000
+      const deadline = Date.now() + budgetMs
 
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: headers(),
-          body: body(request, model, false),
-          signal: controller.signal,
-        })
+      for (let attempt = 0; ; attempt += 1) {
+        const controller = new AbortController()
+        const remaining = Math.max(deadline - Date.now(), 1)
+        const timeout = setTimeout(() => controller.abort(), remaining)
 
-        if (!response.ok) {
-          throw new Error(await describeFailure(response))
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: headers(),
+            body: body(request, model, false),
+            signal: controller.signal,
+          })
+
+          if (response.ok) {
+            return parseGenerateResponse((await response.json()) as VendorResponse, model)
+          }
+
+          const retryable = RETRYABLE_STATUSES.has(response.status)
+          const delay = retryDelayMs(attempt, response.headers.get('retry-after'))
+
+          // Only retry when there is both an invitation to and time left to.
+          if (!retryable || attempt >= MAX_ATTEMPTS - 1 || Date.now() + delay >= deadline) {
+            throw new Error(await describeFailure(response))
+          }
+
+          await sleep(delay)
+        } catch (error) {
+          if (error instanceof Error && error.name === 'AbortError') {
+            // Otherwise this surfaces as a bare "The operation was aborted",
+            // which tells a user nothing and a developer almost nothing.
+            throw new Error(
+              `The model provider did not respond within ${Math.round(budgetMs / 1000)} seconds.`,
+            )
+          }
+          throw error
+        } finally {
+          clearTimeout(timeout)
         }
-
-        return parseGenerateResponse((await response.json()) as VendorResponse, model)
-      } finally {
-        clearTimeout(timeout)
       }
     },
 
     async *stream(request, model): AsyncIterable<StreamPart> {
+      const budgetMs = request.timeoutMs ?? 120_000
       const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), request.timeoutMs ?? 120_000)
+      const timeout = setTimeout(() => controller.abort(), budgetMs)
 
       try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: headers(),
-          body: body(request, model, true),
-          signal: controller.signal,
-        })
+        let response: Response
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: headers(),
+            body: body(request, model, true),
+            signal: controller.signal,
+          })
+        } catch (error) {
+          // A stream reports failure as a part rather than throwing, because the
+          // consumer is a loop that has already started rendering.
+          yield {
+            type: 'error',
+            message:
+              error instanceof Error && error.name === 'AbortError'
+                ? `The model provider did not respond within ${Math.round(budgetMs / 1000)} seconds.`
+                : 'The model provider could not be reached.',
+          }
+          return
+        }
 
         if (!response.ok || !response.body) {
           yield { type: 'error', message: await describeFailure(response) }

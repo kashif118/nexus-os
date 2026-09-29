@@ -1,6 +1,8 @@
 import { isProduction } from '@/kernel/config/env'
 import { isRedactedField, REDACTION_MARKER } from '@/lib/ai/redact'
 
+import { reportError } from './reporting'
+
 /**
  * Structured logging.
  *
@@ -72,6 +74,18 @@ function write(level: LogLevel, event: string, fields: LogFields): void {
     time: new Date().toISOString(),
     ...safeFields(rest),
     ...(error === undefined ? {} : { error: serialiseError(error) }),
+  }
+
+  /*
+   * Every error already flows through here, so this is the one place reporting
+   * needs wiring — rather than eighteen call sites each remembering to do it.
+   *
+   * `reportError` never throws and never awaits, and is a no-op with no DSN
+   * configured. Warnings are not reported: an alerting channel that receives
+   * every warning stops being read.
+   */
+  if (level === 'error') {
+    reportError(error ?? new Error(event), { event, extra: safeFields(rest) })
   }
 
   const line = isProduction ? JSON.stringify(payload) : readable(payload, error)

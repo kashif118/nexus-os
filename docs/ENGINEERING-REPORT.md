@@ -1,9 +1,10 @@
 # NEXUS OS — Final engineering report
 
-24 phases, 25 commits, 363 source files, ~58,600 lines of TypeScript. Verified at the point
-of writing: `npm run verify` green (1,031 unit and integration tests across 48 files),
-`npm run test:e2e` green (49 Playwright journeys across 6 specs against a production build),
-`npm run build` green, `npm run check:bundle` inside budget.
+24 phases plus a production-hardening pass (§25), 371 source files, ~61,000 lines of
+TypeScript. Verified at the point of writing: `npm run verify` green (1,087 unit and
+integration tests across 51 files), `npm run test:e2e` green (53 Playwright journeys
+across 6 specs against a production build), `npm run build` green, `npm run check:bundle`
+inside budget.
 
 Where this report states a number, it was measured. Where something is missing, it says so.
 
@@ -40,7 +41,7 @@ widgets, its own workflow actions and its own AI tools.
 ## 2. Database architecture
 
 PostgreSQL with Prisma 7 using driver adapters (`@prisma/adapter-pg`). **77 models, 46 enums,
-18 migrations**, split by domain across `prisma/schema/` — `identity`, `organization`,
+19 migrations**, split by domain across `prisma/schema/` — `identity`, `organization`,
 `authorization`, `crm`, `projects`, `tasks`, `people`, `finance`, `documents`, `events`,
 `workflows`, `ai`, `agents`, `analytics`, `reports`, `security`, `billing`, `base`.
 
@@ -324,8 +325,8 @@ policy (session lifetime, IP allowlist, new-IP alerting).
 | Integration        | Against real PostgreSQL, per module                                                    |
 | Generated matrices | Authorization (7 × 109), tenant isolation (66 models), index coverage, tenant registry |
 | Query budgets      | Every list screen at 5 rows and at 200, requiring an identical query count             |
-| End-to-end         | 49 Playwright journeys against a production build                                      |
-| **Total**          | **1,031 unit and integration tests in 48 files; 49 E2E in 6 specs**                    |
+| End-to-end         | 53 Playwright journeys against a production build                                      |
+| **Total**          | **1,087 unit and integration tests in 51 files; 53 E2E in 6 specs**                    |
 
 Coverage is **50% of statements** across `kernel`, `lib` and `modules`. That figure includes
 Server Actions, which Vitest does not instrument and which the E2E suite covers instead; React
@@ -347,18 +348,19 @@ tested, `/api/health` answers, the cron endpoint is scheduled in `vercel.json` a
 the GET Vercel sends and a POST, logging is structured, and `docs/OPERATIONS.md` §Q has the exact
 steps.
 
-**Not ready to be called production-grade**, and it would be dishonest to say otherwise:
+**Not ready to be called production-grade**, and it would be dishonest to say otherwise. The
+list below is as it stood before the hardening pass; **§25 records what changed.**
 
-- No error-reporting service. Errors reach `stdout`.
-- No alerting, no uptime monitoring, no dashboards. `/api/health` exists to be polled; nothing
-  polls it.
-- No backup or restore drill. PITR is a property of the database provider, and it has not been
-  exercised here.
-- The Anthropic and Stripe adapters have never been run against the live services.
-- No load testing beyond the query budgets.
-
-A reasonable next step is one week: error reporting, an uptime check, a restore drill, and a
-first live call against each provider in a staging project.
+- ~~No error-reporting service.~~ **Addressed in §25** — a reporter now covers server, API and
+  browser errors. It has never delivered an envelope to a live DSN.
+- No alerting and no uptime monitoring. `/api/health` exists to be polled and `docs/RUNBOOK.md`
+  §1 says exactly how to configure it — but nothing polls it and no alert rule exists anywhere.
+  **This is configuration you must do.**
+- No backup or restore drill. **The procedure is now written down** in `docs/RUNBOOK.md` §2 and
+  marked DRILL REQUIRED. It has not been executed.
+- The Anthropic and Stripe adapters have never been run against the live services. Unchanged,
+  and now joined by the email and error-reporting adapters. See §25.3.
+- No load testing beyond the query budgets. Unchanged.
 
 ## 21. Remaining limitations
 
@@ -384,28 +386,53 @@ first live call against each provider in a staging project.
 
 ## 22. Required production environment variables
 
-Required — the application will not work without them:
+> **Corrected during the hardening pass (§25).** This table previously listed
+> `AUTH_SECRET` as required — it does not exist in the code and never did — and listed
+> email, storage, cron and error reporting as _optional_. Three of those break the
+> product on a serverless host and the fourth blinds you to it. All four fail silently.
 
-| Variable               | Purpose                                                                 |
-| ---------------------- | ----------------------------------------------------------------------- |
-| `DATABASE_URL`         | Pooled connection used at runtime (PgBouncer / Neon pooler)             |
-| `DIRECT_DATABASE_URL`  | Direct connection, migrations only — DDL through a pooler is unreliable |
-| `AUTH_SECRET`          | 32+ random bytes                                                        |
-| `NEXT_PUBLIC_APP_URL`  | Absolute origin, used for email links and `metadataBase`                |
-| `NEXT_PUBLIC_APP_NAME` | Display name                                                            |
+**Required.** `npm run check:production` refuses a configuration missing any of these,
+and says what breaks rather than only naming the variable:
 
-Optional — each turns a capability on rather than changing an existing one:
+| Variable                        | Purpose                               | Without it                                                            |
+| ------------------------------- | ------------------------------------- | --------------------------------------------------------------------- |
+| `DATABASE_URL`                  | Pooled connection, runtime            | Every request fails.                                                  |
+| `DIRECT_DATABASE_URL`           | Direct connection, migrations only    | `prisma migrate deploy` is unreliable through a pooler.               |
+| `NEXT_PUBLIC_APP_URL`           | Absolute origin, https                | Every link in every email is wrong.                                   |
+| `NEXT_PUBLIC_APP_NAME`          | Display name                          | Defaults to "NEXUS OS". Cosmetic.                                     |
+| `EMAIL_PROVIDER` + `EMAIL_FROM` | A real transport: `smtp` or `resend`  | **Sign-up strands every user** — the verification link goes to a log. |
+| `STORAGE_DRIVER=s3` + `S3_*`    | Object storage                        | **Uploaded documents vanish** on an ephemeral filesystem.             |
+| `CRON_SECRET`                   | Shared secret for the scheduled sweep | **No notifications, no workflow resumption, no scheduled reports.**   |
+| `SENTRY_DSN`                    | Error reporting                       | Errors reach stdout only. No alerting, no retention.                  |
 
-| Variable                                      | Without it                                                                |
-| --------------------------------------------- | ------------------------------------------------------------------------- |
-| `CRON_SECRET`                                 | `/api/cron/outbox` answers 503; no drains, workflow resumption or reports |
-| `AI_PROVIDER` + `ANTHROPIC_API_KEY`           | The assistant says it is not configured                                   |
-| `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` | No checkout; plans set manually and recorded as manual                    |
-| `STORAGE_DRIVER=s3` + S3 credentials          | Local filesystem storage, unsuitable on serverless                        |
-| SMTP / email transport settings               | Email printed to the server log rather than sent                          |
+`EMAIL_PROVIDER=smtp` additionally requires `SMTP_HOST`, `SMTP_USER` and `SMTP_PASSWORD`
+(and `SMTP_PORT` / `SMTP_SECURE` if not 587/STARTTLS); `EMAIL_PROVIDER=resend` requires
+`RESEND_API_KEY`. `STORAGE_DRIVER=s3` requires `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`,
+`S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. Each is validated at the point of use, and
+selecting a transport without its credentials throws rather than falling back — a
+deployment that believes it is sending email and is not is worse than one that knows it
+cannot.
 
-`npm run check:env` diffs `.env.example` against the Zod schema and runs in CI, so the two
-cannot drift. **No secret is ever `NEXT_PUBLIC_`, and `.env.local` is not committed.**
+**Genuinely optional** — each enables a capability, and its absence is a state the
+product is explicit about rather than a degradation it hides:
+
+| Variable                                           | Without it                                                   |
+| -------------------------------------------------- | ------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY` (+ `AI_PROVIDER`)              | The assistant says it is not configured. It invents nothing. |
+| `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`      | No checkout; an owner sets the plan, recorded as manual.     |
+| `STRIPE_PRICE_TEAM` / `STRIPE_PRICE_BUSINESS`      | That plan cannot be purchased.                               |
+| `AI_MONTHLY_BUDGET_MICROS`                         | Defaults to 50 USD per organization per month.               |
+| `SENTRY_ENVIRONMENT` / `_RELEASE` / `_SERVER_NAME` | Reports are harder to group. Nothing breaks.                 |
+| `STORAGE_MAX_UPLOAD_BYTES`                         | Defaults to 25 MB.                                           |
+
+Two checks, answering two different questions:
+
+- `npm run check:env` — does `.env.example` match the Zod schema? Runs in CI.
+- `npm run check:production` — is _this_ configuration fit to serve real users? Reads
+  configuration only: no connection, no request, no credentials needed.
+
+**No secret is ever `NEXT_PUBLIC_`, and `.env.local` is gitignored and not committed** —
+only `.env.example`, which contains placeholders and nothing else.
 
 ## 23. Running it locally — exact commands
 
@@ -440,10 +467,11 @@ npm run typecheck                # tsc --noEmit
 npm run lint                     # ESLint, including architectural boundary rules
 npm run format:check             # Prettier
 npm run check:env                # .env.example matches the schema
-npm test                         # 1,031 unit and integration tests
+npm run check:production         # is THIS configuration fit to serve real users
+npm test                         # 1,087 unit and integration tests
 npm run verify                   # all of the above in one command
 npm run build                    # production build
-npm run test:e2e                 # 49 Playwright journeys against that build
+npm run test:e2e                 # 53 Playwright journeys against that build
 npm run check:bundle             # client bundle budget, gzipped
 ```
 
@@ -459,49 +487,217 @@ npm run db:studio                # browse data
 
 ## 24. Deploying to Vercel — exact steps
 
+> Revised in the hardening pass. Steps 3, 7 and 10 changed materially: three variables
+> previously described as optional are required, and the preflight now proves it before a
+> deploy rather than after.
+
 1. **Provision PostgreSQL 17** (Neon, Supabase, or any managed Postgres). Take both connection
-   strings: pooled and direct.
+   strings: pooled and direct. Enable point-in-time recovery now, not later —
+   `docs/RUNBOOK.md` §2.1 lists what to turn on per provider.
 
-2. **Import the repository** in Vercel. Framework preset: Next.js. No build command override.
+2. **Provision an S3-compatible bucket** (AWS S3, Cloudflare R2, MinIO). It must be **private**:
+   this application never issues a public object URL. Enable versioning, so an overwrite or a
+   delete is recoverable.
 
-3. **Set environment variables** for Production and Preview — the five required ones from §22, and
-   whichever optional ones you want active. The build fails at boot if a required one is missing,
-   which is intended.
+3. **Set environment variables** for Production and Preview — all eight required ones from §22.
+   Then prove the configuration is fit before deploying anything:
 
-4. **Run migrations** from your machine, against the direct URL:
+   ```bash
+   npm run check:production        # exit 0, or it tells you exactly what breaks
+   ```
+
+   Do not skip this on the grounds that the build succeeds. Every blocker it reports fails
+   **silently** at runtime: the application starts, serves pages, accepts sign-ups, and does
+   none of the things those users are waiting for.
+
+4. **Import the repository** in Vercel. Framework preset: Next.js. No build command override.
+
+5. **Run migrations** from your machine, against the direct URL:
 
    ```bash
    DIRECT_DATABASE_URL='postgresql://…' DATABASE_URL='postgresql://…' npm run db:deploy
    ```
 
-5. **Seed the permission catalogue** — idempotent, and safe to re-run after every deploy that adds
-   permissions:
+6. **Seed the permission catalogue** — idempotent, and safe to re-run after every deploy that
+   adds permissions. Skipping it means every page 403s:
 
    ```bash
    DATABASE_URL='postgresql://…' npm run db:seed
    ```
 
-6. **Deploy**, then confirm:
+7. **Deploy**, then confirm all four:
 
    ```bash
-   curl -s https://<domain>/api/health     # {"status":"ok","checks":{"database":"ok"}}
+   curl -s  https://<domain>/api/health            # {"status":"ok","checks":{"database":"ok"}}
    curl -sI https://<domain>/ | grep -i content-security-policy
+   curl -sI https://<domain>/ | grep -i strict-transport-security
+   curl -s  https://<domain>/robots.txt            # Disallow: /
    ```
 
-7. **Confirm the cron job** under Settings → Cron Jobs. `vercel.json` registers
-   `/api/cron/outbox` every five minutes. Without `CRON_SECRET` set it answers 503 and no
-   scheduled work happens — no outbox drains, no workflow resumption, no scheduled reports.
+8. **Confirm the cron job** under Settings → Cron Jobs. `vercel.json` registers
+   `/api/cron/outbox` every five minutes, and the route accepts the GET that Vercel sends as
+   well as a POST. Then confirm it actually ran: look for a `cron.outbox.completed` line in the
+   function logs within ten minutes. **Registration is not evidence of execution** — a
+   registered cron whose secret is wrong answers 404 forever and looks fine in the dashboard.
 
-8. **If using Stripe**, add a webhook endpoint at `https://<domain>/api/webhooks/billing`,
+9. **If using Stripe**, add a webhook endpoint at `https://<domain>/api/webhooks/billing`,
    subscribe to `customer.subscription.*` and `invoice.payment_*`, and set
-   `STRIPE_WEBHOOK_SECRET` to the signing secret. Verify with a test event that the
-   `StripeEvent` idempotency row appears. Until this is done, plans can only be set by hand, and
-   a manual set is recorded as a manual decision with **no** paid period — so reconciliation can
-   always tell "we saw a payment" from "somebody said so".
+   `STRIPE_WEBHOOK_SECRET` to the signing secret. Send a test event and confirm a
+   `BillingEvent` row appears with `processedAt` set. Until this is done, plans can only be set
+   by hand, and a manual set is recorded as a manual decision with **no** paid period — so
+   reconciliation can always tell "we saw a payment" from "somebody said so".
 
-9. **Before inviting anyone real**: add an error-reporting service, point an uptime monitor at
-   `/api/health`, and run a restore drill. None of the three is in this repository, and the
-   deployment is not finished without them.
+10. **Make one real call against every external integration** in a staging project before
+    production. None has ever run against its live service (§25.3), and each is a place where
+    the documented contract and the current API can have drifted:
+
+    - **Email** — sign up as yourself and confirm the verification message arrives.
+    - **Anthropic** — open the Intelligence Center and ask one question.
+    - **Sentry** — throw a deliberate error and confirm the issue appears.
+    - **Storage** — upload a document, then download it from a different session.
+
+11. **Configure monitoring** — `docs/RUNBOOK.md` §1: an uptime monitor on `/api/health`, and the
+    eight log-based alerts. The most important is the absence of `cron.outbox.completed`: a
+    stalled schedule is invisible to an uptime check and stops notifications, workflow
+    resumption and scheduled reports at once.
+
+12. **Run the restore drill** — `docs/RUNBOOK.md` §2.5 — and write down how long it took.
+    Until this is done the backup strategy is a hypothesis, and **the deployment is not
+    finished.**
+
+## 25. The production-hardening pass
+
+Added after the report above was first written, and it changed several of its
+conclusions. Where §20–§24 now disagree with an earlier statement, the later one is
+correct and the change is described here.
+
+### 25.1 What was fixed
+
+**Two real defects in the Stripe webhook path.** Neither was covered by
+idempotency-by-event-id, and both would have been silent — the subscription would simply
+have held the wrong state, with nothing logged and nothing to notice:
+
+1. **A failed webhook could never be retried successfully.** `claimEvent` refused any
+   event id it had already seen, including one whose first attempt had thrown. The
+   sequence was: attempt one claims the row, handling fails, the route answers 500 to ask
+   for a retry — and every retry is then refused as "already processed" and answered 200.
+   A transient database error during a subscription update meant that subscription never
+   caught up. The claim now distinguishes _seen_ from _processed_: an unprocessed row is
+   re-claimable through a conditional update, so exactly one of two concurrent retries
+   proceeds.
+
+2. **Out-of-order delivery could revive a cancelled subscription.** Webhooks are not
+   ordered. A `customer.subscription.updated` retried after a timeout can arrive _after_
+   the `customer.subscription.deleted` that followed it, and the older payload won.
+   `Subscription.lastProviderEventAt` now records the provider timestamp of the newest
+   applied event, and older state is recorded and refused. Idempotency does not cover
+   this case: these are two different events, each processed exactly once, in the wrong
+   order.
+
+**A documentation defect that would have misled every deployment.** `AUTH_SECRET` was
+listed as a required production variable in three places. No code in this repository
+reads it, and none ever did — sessions are opaque 256-bit random tokens stored as SHA-256
+digests, so there is no secret to sign with. Setting it would have done nothing while
+creating the impression that something was protected by it. Removed from the
+documentation rather than added to the code.
+
+**Four "optional" variables that are not optional.** §22 previously listed email, cron,
+storage and error reporting as capabilities you could leave off. On a serverless
+deployment three of them break the product and the fourth blinds you to it — and each
+fails _silently_. `npm run check:production` now refuses a configuration missing any of
+them, with the consequence spelled out rather than the variable name alone.
+
+**Everything else added:**
+
+| Area             | Change                                                                                                                                                                                                                                                                                         |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Error reporting  | A port with a Sentry envelope adapter over `fetch`. Server errors report through the logger, so all 18 existing call sites are covered without touching any of them. Browser errors post to `/api/telemetry/error` — the DSN never reaches the client, and the same redaction applies to both. |
+| Email            | Two real transports: SMTP (STARTTLS mandatory, refusing to authenticate in the clear) and Resend. Header injection is stripped from subjects, which are partly derived from organization names.                                                                                                |
+| Stripe transport | A 15-second timeout, and an `Idempotency-Key` on checkout creation so a double click cannot produce two sessions.                                                                                                                                                                              |
+| AI transport     | Bounded retry on 429/5xx honouring `retry-after`, with full jitter; no retry on 4xx, which would only waste the user's time; and a timeout that reports itself in words rather than as `AbortError`. Retrying never outlives the caller's own deadline.                                        |
+| Cron             | A Postgres advisory lock so invocations cannot pile up, and a `cron.outbox.completed` log line on every run — whose _absence_ is the only way to detect a stalled schedule.                                                                                                                    |
+| Runbook          | `docs/RUNBOOK.md`: uptime-monitor configuration, eight log-based alert rules, the full restore procedure, and what the monitor will not catch.                                                                                                                                                 |
+
+### 25.2 What was verified
+
+- **The two Stripe fixes**, each by a test that fails without it: a retry after a forced
+  failure now succeeds and records two attempts; a late `updated` event does not
+  reactivate a cancelled subscription.
+- **The AI transport**, against a stubbed `fetch`: retries on 429 and 529, does not retry
+  on 400 or 401, gives up after three attempts, refuses a backoff that would outlive the
+  request budget, and never echoes a key into an error message.
+- **The SMTP dialogue**, against a scripted socket: the full STARTTLS → AUTH → DATA
+  sequence, refusal to authenticate against a server with no STARTTLS, dot-stuffing, and
+  rejection of a bad recipient rather than a false success.
+- **Redaction**, on both paths: a password, an API key, a session token and a pay rate are
+  all `[redacted]`; a nested object is described rather than serialised, so a request body
+  cannot leave the process inside an error report.
+- **The telemetry endpoint**, end to end: reachable without a session, discards malformed
+  reports without describing the schema, refuses an oversized body, and is not reachable
+  by GET.
+- **Expand-only migrations**, mechanically: none of the 19 migrations contains a
+  `DROP COLUMN`, `DROP TABLE`, `RENAME` or `SET NOT NULL`. This is what makes the restore
+  procedure and a rollback viable.
+- **The full gate**: typecheck, lint, format, env sync, 1,087 unit and integration tests,
+  53 end-to-end journeys, production build, bundle budget.
+
+### 25.3 What could NOT be verified — BLOCKED
+
+No credentials for any external service were available, and none were invented. Each
+integration below is written to its documented contract and tested against constructed
+payloads; **the network path has never been exercised**, and the first real call will be
+the first real call.
+
+| Integration        | Blocked on                                   | What a first real call would prove                                                                                                                                     |
+| ------------------ | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stripe**         | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | That the live event shape matches what `handleEvent` reads. One field worth watching: newer Stripe API versions moved `current_period_end` onto the subscription item. |
+| **Anthropic**      | `ANTHROPIC_API_KEY`                          | That the Messages API request and response shapes are current.                                                                                                         |
+| **SMTP**           | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`    | That real servers accept this dialogue. Servers differ in what they announce and tolerate.                                                                             |
+| **Resend**         | `RESEND_API_KEY`                             | That the payload is accepted and the sending domain is verified.                                                                                                       |
+| **Sentry**         | `SENTRY_DSN`                                 | That the envelope is accepted. Grouping will be by exception type and message rather than by stack frame — see the note in `reporting.ts`.                             |
+| **Backup/restore** | A real database with real volume             | That the procedure in `docs/RUNBOOK.md` §2 works, and how long it takes.                                                                                               |
+| **Vercel cron**    | A deployment                                 | That the schedule is registered and firing. Nothing in this repository can assert that.                                                                                |
+| **Load**           | A load-testing target                        | Throughput under concurrency. Query _counts_ are pinned; timing is not.                                                                                                |
+
+### 25.4 Remaining limitations, after this pass
+
+Unchanged from §21 except where noted:
+
+1. **No row-level security.** Deliberately not attempted in this pass: RLS with Prisma
+   through a transaction-mode pooler requires per-transaction session variables, and
+   adding that to 66 tables at the end of a hardening pass would risk the isolation that
+   currently works and is proven. It remains the correct next structural investment.
+2. **No MFA, OAuth or passkeys.** These are features, not hardening. Password-only with a
+   30-day sliding session remains the largest authentication-side risk.
+3. **No malware scanning.** Requires an external scanner; BLOCKED on infrastructure.
+4. **No shared-store rate limiting.** Authentication throttling is database-backed and
+   correct across instances. The telemetry limiter is in-memory and therefore
+   per-instance — an accepted approximation, stated where it is implemented, on an
+   endpoint that only writes telemetry.
+5. **No cache layer and no rollups.** Unchanged.
+6. **No load testing.** Unchanged.
+7. **Sentry grouping is coarse.** Without the SDK there is no stack-frame parser and no
+   source-map resolution, so issues group by exception type and message. The trade is
+   documented in `reporting.ts`; switching to `@sentry/nextjs` is a contained change.
+8. **SMTP is minimal.** No connection pooling, no DKIM signing, no attachments. If any of
+   those become necessary, Nodemailer is the answer.
+9. **Coverage.** Now 51 test files and 1,087 tests, up from 48 and 1,031.
+
+### 25.5 Is it production-ready?
+
+**No — and the gap is now configuration and rehearsal rather than code.**
+
+What would make that a yes, in order:
+
+1. Set the eight required variables (§22) — `npm run check:production` must exit 0.
+2. Make one real call against each of Stripe, Anthropic and the email transport in a
+   staging project, and confirm the shapes match.
+3. Point an uptime monitor at `/api/health` and configure the eight log alerts in
+   `docs/RUNBOOK.md` §1.4.
+4. Perform the restore drill in `docs/RUNBOOK.md` §2.5 and write down the elapsed time.
+
+Until step 4 is done, the honest claim is: **the application is ready to be deployed to a
+staging environment and exercised.** It is not ready to hold data somebody would miss.
 
 ---
 

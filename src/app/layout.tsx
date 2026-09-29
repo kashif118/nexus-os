@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { headers } from 'next/headers'
 import type { ReactNode } from 'react'
 
+import { ClientErrorReporter } from '@/components/observability/client-error-reporter'
 import { Toaster } from '@/components/feedback/toaster'
 import { ThemeProvider } from '@/components/theme-provider'
 import { clientEnv } from '@/kernel/config/env'
@@ -55,6 +56,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         >
           {children}
           <Toaster />
+          <ClientErrorReporter />
         </ThemeProvider>
       </body>
     </html>

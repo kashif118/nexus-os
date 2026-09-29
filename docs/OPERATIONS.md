@@ -247,8 +247,10 @@ NODE_ENV · APP_URL · APP_NAME
 DATABASE_URL                 pooled (PgBouncer/Neon) — runtime
 DIRECT_DATABASE_URL          direct — migrations only
 
-# Auth
-AUTH_SECRET                  32+ bytes random
+# Auth — the block below is the ORIGINAL SPECIFICATION, not what was built.
+# AUTH_SECRET was never implemented: sessions are opaque random tokens, so
+# there is no secret to sign with. OAuth and MFA were not built either.
+# See §Q.4 for what is actually required.
 AUTH_URL
 AUTH_GOOGLE_ID / AUTH_GOOGLE_SECRET
 AUTH_GITHUB_ID / AUTH_GITHUB_SECRET
@@ -298,40 +300,61 @@ section is the truth.
 
 ### Q.1 What is in place
 
-| Concern                 | As built                                                                                                                                                                                                 |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Security headers        | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-DNS-Prefetch-Control` from `next.config.ts`; HSTS in production builds only.                                    |
-| Content-Security-Policy | Nonce-based, minted per request in `src/proxy.ts`. `script-src` carries no `'unsafe-inline'`; `'unsafe-eval'` is development-only. Verified by an E2E test that fails on any browser-reported violation. |
-| Health check            | `GET /api/health` — runs `SELECT 1`, returns 200 or 503 and nothing else. Public, uncached, and deliberately uninformative on failure.                                                                   |
-| Scheduled work          | `POST` **and** `GET /api/cron/outbox`, authenticated by `CRON_SECRET` compared in constant time. `vercel.json` schedules it every five minutes.                                                          |
-| Logging                 | `src/kernel/observability/logger.ts` — one JSON object per line in production, readable in development, field names redacted against the same list the AI layer uses.                                    |
-| Crawlers                | `/robots.txt` disallows everything, alongside `robots: { index: false }` on the root layout.                                                                                                             |
-| Error boundaries        | `error.tsx`, `global-error.tsx`, `not-found.tsx`. A user sees a digest; the detail is in the server log under that digest.                                                                               |
+| Concern                 | As built                                                                                                                                                                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Security headers        | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, `X-DNS-Prefetch-Control` from `next.config.ts`; HSTS in production builds only.                                                                                                                                        |
+| Content-Security-Policy | Nonce-based, minted per request in `src/proxy.ts`. `script-src` carries no `'unsafe-inline'`; `'unsafe-eval'` is development-only. Verified by an E2E test that fails on any browser-reported violation.                                                                                                     |
+| Health check            | `GET /api/health` — runs `SELECT 1`, returns 200 or 503 and nothing else. Public, uncached, and deliberately uninformative on failure.                                                                                                                                                                       |
+| Scheduled work          | `POST` **and** `GET /api/cron/outbox`, authenticated by `CRON_SECRET` compared in constant time. `vercel.json` schedules it every five minutes.                                                                                                                                                              |
+| Logging                 | `src/kernel/observability/logger.ts` — one JSON object per line in production, readable in development, field names redacted against the same list the AI layer uses.                                                                                                                                        |
+| Error reporting         | `src/kernel/observability/reporting.ts` — a port with a Sentry envelope adapter over `fetch`. Server errors report automatically through the logger; browser errors post to `/api/telemetry/error`, so no vendor script runs in the page and the DSN never reaches the client. A no-op with no `SENTRY_DSN`. |
+| Outbound email          | `src/lib/email/transports.ts` — SMTP (STARTTLS mandatory) and Resend, selected by `EMAIL_PROVIDER`. Console remains the development default and is a production blocker.                                                                                                                                     |
+| Configuration checks    | `npm run check:env` (does `.env.example` match the schema) and `npm run check:production` (is this configuration fit to serve real users).                                                                                                                                                                   |
+| Scheduled sweep         | Advisory-locked so invocations cannot pile up, and logs `cron.outbox.completed` on every run — the absence of which is the only way to detect a stalled schedule.                                                                                                                                            |
+| Crawlers                | `/robots.txt` disallows everything, alongside `robots: { index: false }` on the root layout.                                                                                                                                                                                                                 |
+| Error boundaries        | `error.tsx`, `global-error.tsx`, `not-found.tsx`. A user sees a digest; the detail is in the server log under that digest.                                                                                                                                                                                   |
 
 ### Q.2 What is NOT in place
 
 Stated plainly, because the difference between "planned" and "present" is the difference
 between a runbook and a wish.
 
-- **No Sentry, and no error-reporting service of any kind.** Errors reach `stdout`. On Vercel
-  that means the function logs, which are retained for a limited window and have no alerting.
-- **No Redis and no cache layer.** Every figure is computed per request. The query budgets in
-  `src/lib/__tests__/query-budget.integration.test.ts` are what keeps that affordable.
+**Integrations that exist in code but have never been run against the live service.** Each
+is written to the documented contract and unit-tested against constructed payloads; the
+network path is not exercised, and the first real call will be the first real call:
+
+- **Stripe.** Signature verification, idempotency, out-of-order rejection and the retry
+  path are covered by tests. No live charge, no live webhook.
+- **Anthropic.** Request and response translation, streaming, retry and timeout handling
+  are covered with a stubbed `fetch`. No live completion.
+- **SMTP and Resend.** Message construction and the full SMTP dialogue are covered against
+  a scripted socket. No message has been delivered.
+- **Sentry.** Envelope construction and redaction are covered. No envelope has been
+  accepted by an ingest endpoint.
+
+**Genuinely absent:**
+
+- **No cache layer.** Every figure is computed per request. The query budgets in
+  `src/lib/__tests__/query-budget.integration.test.ts` are what keep that affordable.
 - **No nightly rollups.** `MetricSnapshot` exists in the schema; nothing writes to it on a
   schedule. Analytics computes live, which is correct at the volumes this is tested at and
   will need revisiting well before a tenant has millions of rows.
-- **No uptime monitor, no alerting, no dashboards.** `/api/health` exists to be polled; nothing
-  polls it.
-- **No backup or restore drill.** Neon PITR is a property of the database provider, not of this
-  repository, and it has not been exercised.
-- **No Postgres row-level security.** Tenant isolation is enforced by the scoped Prisma client
-  and proven by a generated matrix over all 57 tenant tables. RLS remains the defence-in-depth
-  layer that has not been added (§D12).
+- **No uptime monitor and no alerting.** `/api/health` exists to be polled and
+  `docs/RUNBOOK.md` §1 says exactly how — but nothing in this repository polls it, and no
+  alert rule exists anywhere. This is configuration you must do.
+- **No backup or restore drill.** PITR is a property of the database you provision.
+  `docs/RUNBOOK.md` §2 documents the full restore procedure and marks it DRILL REQUIRED,
+  because a restore that has never been executed is a hypothesis.
+- **No Postgres row-level security.** Tenant isolation is enforced by the scoped Prisma
+  client and proven by a generated matrix over all 66 tenant tables. RLS remains the
+  defence-in-depth layer that has not been added (§D12).
 - **No malware scanning on upload.** Documents record a `SKIPPED` scan status rather than
   claiming a clean one.
-- **The Anthropic and Stripe adapters have never been run against the live services.** They are
-  written to the documented contracts and unit-tested against fixtures; the first real call
-  will be in whatever environment first sets the keys.
+- **No MFA, no OAuth, no passkeys.**
+- **No shared-store rate limiting.** Authentication throttling is database-backed and
+  therefore correct across instances. The telemetry endpoint's limiter is in-memory and
+  therefore per-instance, which is stated where it is implemented.
+- **No load testing.** Query counts are pinned; throughput under concurrency is unmeasured.
 
 ### Q.3 Deploying to Vercel
 
@@ -356,24 +379,44 @@ between a runbook and a wish.
 
 ### Q.4 Required environment variables
 
-Required in every environment:
+> **Correction.** Earlier versions of this table listed `AUTH_SECRET` as required. It is
+> not, and never was: no code in this repository reads it. Sessions are opaque 256-bit
+> random tokens stored as SHA-256 digests, so there is no secret to sign with. Setting it
+> would have done nothing while creating the impression that something was protected by
+> it. It has been removed rather than added.
 
-| Variable               | Purpose                                                          |
-| ---------------------- | ---------------------------------------------------------------- |
-| `DATABASE_URL`         | Pooled connection used at runtime.                               |
-| `DIRECT_DATABASE_URL`  | Direct connection, migrations only.                              |
-| `AUTH_SECRET`          | 32+ random bytes. Signs and verifies session material.           |
-| `NEXT_PUBLIC_APP_URL`  | Absolute origin. Used for links in email and for `metadataBase`. |
-| `NEXT_PUBLIC_APP_NAME` | Display name.                                                    |
+**Required.** The application cannot serve real users without every one of these:
 
-Optional, and each one turns a capability on rather than changing how an existing one behaves:
+| Variable                        | Purpose                               | Without it                                                            |
+| ------------------------------- | ------------------------------------- | --------------------------------------------------------------------- |
+| `DATABASE_URL`                  | Pooled connection used at runtime     | Every request fails.                                                  |
+| `DIRECT_DATABASE_URL`           | Direct connection, migrations only    | `prisma migrate deploy` is unreliable through a pooler.               |
+| `NEXT_PUBLIC_APP_URL`           | Absolute origin, for email links      | Every link in every email is wrong.                                   |
+| `NEXT_PUBLIC_APP_NAME`          | Display name                          | Defaults to "NEXUS OS". Cosmetic.                                     |
+| `EMAIL_PROVIDER` + `EMAIL_FROM` | A real transport: `smtp` or `resend`  | **Sign-up strands every user** — the verification link goes to a log. |
+| `STORAGE_DRIVER=s3` + `S3_*`    | Object storage                        | **Uploaded documents vanish** on an ephemeral filesystem.             |
+| `CRON_SECRET`                   | Shared secret for the scheduled sweep | **No notification delivery, no workflow resumption, no reports.**     |
+| `SENTRY_DSN`                    | Error reporting                       | Errors reach stdout only. No alerting, no retention.                  |
 
-| Variable                                      | Without it                                                                    |
-| --------------------------------------------- | ----------------------------------------------------------------------------- |
-| `CRON_SECRET`                                 | `/api/cron/outbox` answers 503; no scheduled drains, workflows or reports.    |
-| `ANTHROPIC_API_KEY` (+ `AI_PROVIDER`)         | The assistant says it is not configured. It does not invent answers.          |
-| `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` | No checkout; plans are set manually and recorded as manual.                   |
-| `SMTP_*` / email transport                    | Email is printed to the server log instead of sent. Sign-up still works.      |
-| Storage credentials                           | Documents use the local filesystem driver, which is unsuitable on serverless. |
+The last four were previously documented as OPTIONAL. That was wrong, and wrong in the way
+that matters most: **each of them fails silently.** A deployment missing them starts, serves
+pages, accepts sign-ups and looks healthy while doing none of the things those users are
+waiting for. `npm run check:production` refuses a configuration missing any of them.
 
-`npm run check:env` is the authority and runs in CI; this table is a description of it.
+**Genuinely optional** — each enables a capability, and its absence is a supported state
+that the product is explicit about rather than a degradation it hides:
+
+| Variable                                           | Without it                                                   |
+| -------------------------------------------------- | ------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY` (+ `AI_PROVIDER`)              | The assistant says it is not configured. It invents nothing. |
+| `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`      | No checkout; an owner sets the plan, recorded as manual.     |
+| `STRIPE_PRICE_TEAM` / `STRIPE_PRICE_BUSINESS`      | That plan cannot be purchased.                               |
+| `AI_MONTHLY_BUDGET_MICROS`                         | Defaults to 50 USD per organization per month.               |
+| `SENTRY_ENVIRONMENT` / `_RELEASE` / `_SERVER_NAME` | Reports are harder to group. Nothing breaks.                 |
+| `STORAGE_MAX_UPLOAD_BYTES`                         | Defaults to 25 MB.                                           |
+
+Two checks, answering two different questions:
+
+- `npm run check:env` — does `.env.example` match the schema? Runs in CI.
+- `npm run check:production` — is _this_ configuration fit to serve real users? Reads
+  configuration only, opens no connection, needs no credentials.

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 
 import { getCronSecret } from '@/kernel/config/env'
+import { log } from '@/kernel/observability/logger'
+import { acquireCronLock } from '@/modules/notifications/cron-lock'
 import { runDrain } from '@/modules/notifications/dispatch'
 import { runDueReports } from '@/modules/reports/scheduler'
 import { resumeDueRuns, runQueued } from '@/modules/workflows/engine'
@@ -59,19 +61,55 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Not found.' }, { status: 404 })
   }
 
-  // Four sweeps, in order: deliver events, execute anything they queued, wake
-  // runs whose delay or approval deadline has passed, and generate any report
-  // whose schedule is due.
-  const events = await runDrain(200)
-  const queued = await runQueued(50)
-  const resumed = await resumeDueRuns(50)
-  const reports = await runDueReports()
+  /*
+   * Refuse to run on top of a run already in progress.
+   *
+   * Every individual operation below is already idempotent — outbox delivery by
+   * `(event, subscriber)`, workflow steps by `(runId, nodeId)` — so an overlap
+   * is safe rather than corrupting. It is still worth preventing: a sweep that
+   * takes longer than the five-minute schedule would otherwise accumulate
+   * concurrent invocations, each competing for the same connections, and the
+   * symptom would be a pool exhausted by the thing meant to be draining it.
+   *
+   * A Postgres advisory lock rather than a row: it is released automatically
+   * when the connection goes, so a killed invocation cannot wedge the schedule.
+   */
+  const lock = await acquireCronLock()
 
-  return NextResponse.json({
-    events,
-    workflowRuns: { started: queued.length, resumed: resumed.length },
-    reports,
-  })
+  if (!lock.acquired) {
+    log.info('cron.outbox.skipped', { reason: 'already running' })
+    return NextResponse.json({ skipped: true, reason: 'A sweep is already running.' })
+  }
+
+  const startedAt = Date.now()
+
+  try {
+    // Four sweeps, in order: deliver events, execute anything they queued, wake
+    // runs whose delay or approval deadline has passed, and generate any report
+    // whose schedule is due.
+    const events = await runDrain(200)
+    const queued = await runQueued(50)
+    const resumed = await resumeDueRuns(50)
+    const reports = await runDueReports()
+
+    const summary = {
+      events,
+      workflowRuns: { started: queued.length, resumed: resumed.length },
+      reports,
+    }
+
+    // Logged on every run, not only on failure: "the cron has not run since
+    // Tuesday" is only answerable if a successful run says something.
+    log.info('cron.outbox.completed', { ...summary, durationMs: Date.now() - startedAt })
+
+    return NextResponse.json(summary)
+  } catch (error) {
+    log.error('cron.outbox.failed', { durationMs: Date.now() - startedAt, error })
+    // 500 so the platform records a failed invocation rather than a silent one.
+    return NextResponse.json({ error: 'The scheduled sweep failed.' }, { status: 500 })
+  } finally {
+    await lock.release()
+  }
 }
 
 /**

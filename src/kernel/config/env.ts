@@ -94,6 +94,43 @@ export const serverEnvSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().min(10).optional(),
   STRIPE_PRICE_TEAM: z.string().min(1).optional(),
   STRIPE_PRICE_BUSINESS: z.string().min(1).optional(),
+
+  /**
+   * Outbound email (Phase 25).
+   *
+   * `console` prints the message to the server log and is for development. It
+   * is NOT a viable production setting: email verification and password reset
+   * links would reach nobody, so sign-up would appear to work and then strand
+   * every new user. The production preflight treats it as a blocker.
+   */
+  EMAIL_PROVIDER: z.enum(['console', 'smtp', 'resend']).default('console'),
+  EMAIL_FROM: z.string().min(3).optional(),
+
+  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(587),
+  SMTP_USER: z.string().min(1).optional(),
+  SMTP_PASSWORD: z.string().min(1).optional(),
+  /** Implicit TLS on connect (port 465). STARTTLS is used otherwise. */
+  SMTP_SECURE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+
+  RESEND_API_KEY: z.string().min(10).optional(),
+
+  /**
+   * Error reporting (Phase 25).
+   *
+   * Absent means errors reach stdout and nothing else — which is what the
+   * engineering report calls the largest operational gap. The DSN is a server
+   * variable on purpose: the browser reports through this application's own
+   * endpoint, so no third-party ingest host appears in the client bundle or in
+   * the Content-Security-Policy.
+   */
+  SENTRY_DSN: z.url().optional(),
+  SENTRY_ENVIRONMENT: z.string().min(1).optional(),
+  SENTRY_RELEASE: z.string().min(1).optional(),
+  SENTRY_SERVER_NAME: z.string().min(1).optional(),
 })
 
 /** Variables exposed to the browser. Must be `NEXT_PUBLIC_` prefixed. */
@@ -256,6 +293,99 @@ export function getAiConfig(): AiConfig {
     apiKey: env.ANTHROPIC_API_KEY ?? null,
     baseUrl: env.ANTHROPIC_BASE_URL,
     monthlyBudgetMicros: env.AI_MONTHLY_BUDGET_MICROS,
+  }
+}
+
+/** Outbound email settings, validated at the point of use. */
+export type EmailConfig =
+  | { provider: 'console'; from: string }
+  | {
+      provider: 'smtp'
+      from: string
+      smtp: { host: string; port: number; user: string; password: string; secure: boolean }
+    }
+  | { provider: 'resend'; from: string; apiKey: string }
+
+/**
+ * Email configuration for the selected transport.
+ *
+ * Selecting a real transport without its credentials throws rather than falling
+ * back to the console. A deployment that believes it is sending verification
+ * emails and is not is worse than one that knows it cannot: the first strands
+ * every new account silently.
+ */
+export function getEmailConfig(): EmailConfig {
+  const env = getServerEnv()
+  const from = env.EMAIL_FROM ?? 'NEXUS OS <no-reply@localhost>'
+
+  if (env.EMAIL_PROVIDER === 'smtp') {
+    const missing = (
+      [
+        ['SMTP_HOST', env.SMTP_HOST],
+        ['SMTP_USER', env.SMTP_USER],
+        ['SMTP_PASSWORD', env.SMTP_PASSWORD],
+        ['EMAIL_FROM', env.EMAIL_FROM],
+      ] as const
+    )
+      .filter(([, value]) => !value)
+      .map(([name]) => name)
+
+    if (missing.length > 0) {
+      throw new Error(
+        `EMAIL_PROVIDER=smtp requires: ${missing.join(', ')}. See .env.example and docs/OPERATIONS.md §Q.4.`,
+      )
+    }
+
+    return {
+      provider: 'smtp',
+      from,
+      smtp: {
+        host: env.SMTP_HOST!,
+        port: env.SMTP_PORT,
+        user: env.SMTP_USER!,
+        password: env.SMTP_PASSWORD!,
+        secure: env.SMTP_SECURE,
+      },
+    }
+  }
+
+  if (env.EMAIL_PROVIDER === 'resend') {
+    const missing = (
+      [
+        ['RESEND_API_KEY', env.RESEND_API_KEY],
+        ['EMAIL_FROM', env.EMAIL_FROM],
+      ] as const
+    )
+      .filter(([, value]) => !value)
+      .map(([name]) => name)
+
+    if (missing.length > 0) {
+      throw new Error(
+        `EMAIL_PROVIDER=resend requires: ${missing.join(', ')}. See .env.example and docs/OPERATIONS.md §Q.4.`,
+      )
+    }
+
+    return { provider: 'resend', from, apiKey: env.RESEND_API_KEY! }
+  }
+
+  return { provider: 'console', from }
+}
+
+/** Error-reporting settings. `dsn: null` means reporting is off. */
+export interface ErrorReportingConfig {
+  dsn: string | null
+  environment: string | undefined
+  release: string | undefined
+  serverName: string | undefined
+}
+
+export function getErrorReportingConfig(): ErrorReportingConfig {
+  const env = getServerEnv()
+  return {
+    dsn: env.SENTRY_DSN ?? null,
+    environment: env.SENTRY_ENVIRONMENT,
+    release: env.SENTRY_RELEASE,
+    serverName: env.SENTRY_SERVER_NAME,
   }
 }
 

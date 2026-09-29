@@ -58,6 +58,10 @@ const SELF_AUTHENTICATING_PREFIXES = [
   '/api/cron/',
   '/api/health',
   '/api/v1/',
+  // Browser error reports. Deliberately reachable while signed out, because
+  // the errors most worth hearing about happen on the sign-in page. The
+  // endpoint bounds itself on body size, rate and shape instead.
+  '/api/telemetry/',
 ] as const
 
 /*

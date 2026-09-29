@@ -148,3 +148,52 @@ test.describe('endpoints that carry their own credential', () => {
     expect(await response.text()).not.toContain('Sign in to continue')
   })
 })
+
+/**
+ * Browser error reporting.
+ *
+ * Unauthenticated by design — the errors most worth hearing about happen on the
+ * sign-in page — so the interesting assertions are about what it refuses.
+ */
+test.describe('the telemetry endpoint', () => {
+  test('accepts a report without a session and answers 204', async ({ request }) => {
+    const response = await request.post('/api/telemetry/error', {
+      data: { kind: 'error', message: 'Something broke', path: '/sign-in' },
+    })
+
+    // 204 whether or not reporting is configured. Not 401: the proxy must not
+    // be answering for this route.
+    expect(response.status()).toBe(204)
+    expect(await response.text()).not.toContain('Sign in to continue')
+  })
+
+  test('discards a malformed report quietly rather than describing the schema', async ({
+    request,
+  }) => {
+    const responses = await Promise.all([
+      request.post('/api/telemetry/error', { data: { kind: 'not-a-kind', message: 'x' } }),
+      request.post('/api/telemetry/error', { data: { message: 'no kind' } }),
+      request.post('/api/telemetry/error', { data: 'not even an object' }),
+    ])
+
+    for (const response of responses) {
+      expect(response.status()).toBe(204)
+      // A validation message here would turn the endpoint into a schema probe.
+      expect(await response.text()).toBe('')
+    }
+  })
+
+  test('refuses an oversized body', async ({ request }) => {
+    const response = await request.post('/api/telemetry/error', {
+      data: { kind: 'error', message: 'x'.repeat(200_000) },
+    })
+
+    // Either refused for size or discarded by the schema — never accepted whole.
+    expect([204, 413]).toContain(response.status())
+  })
+
+  test('is not reachable by GET', async ({ request }) => {
+    const response = await request.get('/api/telemetry/error')
+    expect(response.status()).toBe(405)
+  })
+})

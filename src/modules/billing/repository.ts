@@ -53,17 +53,42 @@ export async function applyProviderState(input: {
   status: string
   currentPeriodEnd: Date | null
   cancelAt: Date | null
-}): Promise<{ organizationId: string } | null> {
+  /** The provider's own timestamp for the event carrying this state. */
+  eventCreatedAt: Date | null
+}): Promise<{ organizationId: string; stale?: boolean } | null> {
   const db = getSystemDb()
 
   const subscription = await db.subscription.findUnique({
     where: { providerCustomerId: input.providerCustomerId },
-    select: { id: true, organizationId: true },
+    select: { id: true, organizationId: true, lastProviderEventAt: true },
   })
 
   // An event for a customer this deployment has never seen is not an error —
   // it is somebody else's data arriving at a shared endpoint, and is ignored.
   if (!subscription) return null
+
+  /*
+   * Refuse state older than what has already been applied.
+   *
+   * Webhook delivery is not ordered. A `customer.subscription.updated` that was
+   * retried after a timeout can land AFTER the `customer.subscription.deleted`
+   * that followed it, and without this guard the older payload would win —
+   * silently reactivating a cancelled subscription and restoring paid features
+   * to somebody who cancelled.
+   *
+   * Idempotency by event id does not cover this: these are two DIFFERENT events,
+   * each processed exactly once, in the wrong order.
+   *
+   * An event with no timestamp is applied, because refusing it would mean
+   * dropping state on a provider that does not send one.
+   */
+  if (
+    input.eventCreatedAt &&
+    subscription.lastProviderEventAt &&
+    input.eventCreatedAt < subscription.lastProviderEventAt
+  ) {
+    return { organizationId: subscription.organizationId, stale: true }
+  }
 
   await db.subscription.update({
     where: { id: subscription.id },
@@ -73,6 +98,7 @@ export async function applyProviderState(input: {
       status: input.status as never,
       currentPeriodEnd: input.currentPeriodEnd,
       cancelAt: input.cancelAt,
+      lastProviderEventAt: input.eventCreatedAt ?? subscription.lastProviderEventAt,
       // A provider event supersedes any manual setting.
       setManuallyAt: null,
       setManuallyById: null,
@@ -180,20 +206,40 @@ export async function addUsage(
 /* ------------------------------ billing events ---------------------------- */
 
 /**
- * Record a provider event, refusing a repeat.
+ * Claim a provider event for processing.
  *
- * Returns false when the event has already been seen. Webhooks are retried and
- * can arrive out of order; without this, a retried "updated" could undo a later
- * cancellation.
+ * Returns false when this event has already been processed SUCCESSFULLY, which
+ * is what makes delivery idempotent: the provider retries, and a repeat is a
+ * no-op.
+ *
+ * The distinction between "seen" and "processed" is the correction here, and it
+ * mattered. The previous version refused any event whose id already existed —
+ * including one whose first attempt had FAILED. The sequence was:
+ *
+ *   1. attempt one claims the row, handling throws, the route answers 500
+ *      so that the provider will retry;
+ *   2. the provider retries; the row exists, so the claim is refused;
+ *   3. the route answers 200 "already processed", and the event is lost.
+ *
+ * So a transient failure — a database blip during a subscription update — meant
+ * that subscription never reached the state the provider had. The retry the 500
+ * was asking for could never succeed.
+ *
+ * An unprocessed row is therefore re-claimable. The re-claim is a conditional
+ * update on `processedAt IS NULL`, so if two deliveries of the same failed
+ * event arrive together exactly one proceeds.
  */
 export async function claimEvent(
   providerEventId: string,
   type: string,
   payload: unknown,
+  providerCreatedAt: Date | null = null,
 ): Promise<boolean> {
+  const db = getSystemDb()
+
   try {
-    await getSystemDb().billingEvent.create({
-      data: { providerEventId, type, payload: payload as never },
+    await db.billingEvent.create({
+      data: { providerEventId, type, payload: payload as never, attempts: 1, providerCreatedAt },
     })
     return true
   } catch (error) {
@@ -203,7 +249,12 @@ export async function claimEvent(
       'code' in error &&
       (error as { code?: unknown }).code === 'P2002'
     ) {
-      return false
+      const reclaimed = await db.billingEvent.updateMany({
+        where: { providerEventId, processedAt: null },
+        data: { attempts: { increment: 1 }, error: null },
+      })
+
+      return reclaimed.count > 0
     }
     throw error
   }

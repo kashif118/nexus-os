@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
   can,
@@ -261,6 +261,7 @@ describe.skipIf(!hasDatabase)('Billing', () => {
       const applied = await service.applyProviderEvent({
         id: `evt_${suffix}_1`,
         type: 'customer.subscription.updated',
+        createdAt: null,
         data: {
           id: `sub_${suffix}`,
           customer: `cus_${suffix}`,
@@ -288,12 +289,14 @@ describe.skipIf(!hasDatabase)('Billing', () => {
       const first = await service.applyProviderEvent({
         id: eventId,
         type: 'customer.subscription.updated',
+        createdAt: null,
         data: { id: `sub_${suffix}`, customer: `cus_${suffix}`, status: 'active' },
       })
 
       const second = await service.applyProviderEvent({
         id: eventId,
         type: 'customer.subscription.updated',
+        createdAt: null,
         data: { id: `sub_${suffix}`, customer: `cus_${suffix}`, status: 'canceled' },
       })
 
@@ -309,10 +312,130 @@ describe.skipIf(!hasDatabase)('Billing', () => {
       expect(subscription.status).toBe('ACTIVE')
     })
 
+    /*
+     * The two corrections from the production-hardening pass.
+     *
+     * Both are failure modes that idempotency-by-event-id does NOT cover, and
+     * both would have been invisible: the subscription would simply have held
+     * the wrong state, with no error anywhere.
+     */
+
+    it('lets the provider retry an event whose first attempt failed', async () => {
+      const eventId = `evt_${suffix}_retry`
+
+      // A failure inside handling. The route answers 500 to ask for a retry,
+      // which is only worth asking for if the retry can actually succeed.
+      const failure = new Error('database unavailable')
+      const spy = vi
+        .spyOn(getSystemDb().subscription, 'findUnique')
+        .mockRejectedValueOnce(failure as never)
+
+      await expect(
+        service.applyProviderEvent({
+          id: eventId,
+          type: 'customer.subscription.updated',
+          createdAt: null,
+          data: { id: `sub_${suffix}`, customer: `cus_${suffix}`, status: 'past_due' },
+        }),
+      ).rejects.toThrow('database unavailable')
+
+      spy.mockRestore()
+
+      // The retry the 500 asked for. Before this fix it was refused as
+      // "already processed" and the event was lost for good.
+      const retry = await service.applyProviderEvent({
+        id: eventId,
+        type: 'customer.subscription.updated',
+        createdAt: null,
+        data: { id: `sub_${suffix}`, customer: `cus_${suffix}`, status: 'past_due' },
+      })
+
+      expect(retry.applied).toBe(true)
+
+      const subscription = await getSystemDb().subscription.findFirstOrThrow({
+        where: { organizationId: state.orgId },
+        select: { status: true },
+      })
+      expect(subscription.status).toBe('PAST_DUE')
+
+      // And the attempt count records that it took two goes.
+      const row = await getSystemDb().billingEvent.findUniqueOrThrow({
+        where: { providerEventId: eventId },
+        select: { attempts: true, processedAt: true },
+      })
+      expect(row.attempts).toBe(2)
+      expect(row.processedAt).not.toBeNull()
+    })
+
+    it('refuses state older than what has already been applied', async () => {
+      const cancelledAt = new Date('2026-06-01T12:00:00Z')
+      const staleUpdateAt = new Date('2026-06-01T11:59:00Z')
+
+      // The subscription is cancelled.
+      await service.applyProviderEvent({
+        id: `evt_${suffix}_order_cancel`,
+        type: 'customer.subscription.deleted',
+        createdAt: cancelledAt,
+        data: { id: `sub_${suffix}`, customer: `cus_${suffix}`, status: 'canceled' },
+      })
+
+      expect(
+        (
+          await getSystemDb().subscription.findFirstOrThrow({
+            where: { organizationId: state.orgId },
+            select: { status: true },
+          })
+        ).status,
+      ).toBe('CANCELED')
+
+      // Now an OLDER "active" arrives — a different event, delivered late after
+      // a provider-side retry. Idempotency by id does not help: it has never
+      // been seen before, and it is processed exactly once. Only the timestamp
+      // says it must not win.
+      const late = await service.applyProviderEvent({
+        id: `evt_${suffix}_order_stale`,
+        type: 'customer.subscription.updated',
+        createdAt: staleUpdateAt,
+        data: { id: `sub_${suffix}`, customer: `cus_${suffix}`, status: 'active' },
+      })
+
+      expect(late.applied).toBe(true) // recorded against the organization
+      expect(
+        (
+          await getSystemDb().subscription.findFirstOrThrow({
+            where: { organizationId: state.orgId },
+            select: { status: true },
+          })
+        ).status,
+        'a late retry reactivated a cancelled subscription',
+      ).toBe('CANCELED')
+    })
+
+    it('still applies genuinely newer state', async () => {
+      const laterAt = new Date('2026-06-02T09:00:00Z')
+
+      await service.applyProviderEvent({
+        id: `evt_${suffix}_order_new`,
+        type: 'customer.subscription.updated',
+        createdAt: laterAt,
+        data: { id: `sub_${suffix}`, customer: `cus_${suffix}`, status: 'active' },
+      })
+
+      expect(
+        (
+          await getSystemDb().subscription.findFirstOrThrow({
+            where: { organizationId: state.orgId },
+            select: { status: true },
+          })
+        ).status,
+      ).toBe('ACTIVE')
+    })
+
     it('ignores an event for a customer this deployment has never seen', async () => {
       const result = await service.applyProviderEvent({
         id: `evt_${suffix}_stranger`,
         type: 'customer.subscription.updated',
+        createdAt: null,
         data: { id: 'sub_other', customer: 'cus_someone_else', status: 'active' },
       })
 
@@ -323,6 +446,7 @@ describe.skipIf(!hasDatabase)('Billing', () => {
       await service.applyProviderEvent({
         id: `evt_${suffix}_cancel`,
         type: 'customer.subscription.deleted',
+        createdAt: null,
         data: { id: `sub_${suffix}`, customer: `cus_${suffix}`, status: 'canceled' },
       })
 

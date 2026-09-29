@@ -1,6 +1,7 @@
 import { writeAuditLog } from '@/kernel/audit/write'
 import { clientEnv, getBillingConfig } from '@/kernel/config/env'
 import { conflict, notFound, validationError } from '@/kernel/errors'
+import { log } from '@/kernel/observability/logger'
 import type { Ctx } from '@/kernel/tenancy/ctx'
 
 import { usageFor } from './entitlements'
@@ -177,7 +178,7 @@ const STATUS_MAP: Record<string, string> = {
 export async function applyProviderEvent(
   event: ProviderEvent,
 ): Promise<{ applied: boolean; reason?: string }> {
-  const fresh = await repository.claimEvent(event.id, event.type, event.data)
+  const fresh = await repository.claimEvent(event.id, event.type, event.data, event.createdAt)
   if (!fresh) return { applied: false, reason: 'Already processed.' }
 
   try {
@@ -228,7 +229,19 @@ async function handleEvent(event: ProviderEvent): Promise<string | null> {
       status,
       currentPeriodEnd: epochToDate(data.current_period_end),
       cancelAt: epochToDate(data.cancel_at),
+      eventCreatedAt: event.createdAt,
     })
+
+    if (applied?.stale) {
+      // Recorded, deliberately not acted on: this event is older than state
+      // already applied, so honouring it would move the subscription backwards.
+      log.warn('billing.event.stale', {
+        organizationId: applied.organizationId,
+        event: event.type,
+        eventId: event.id,
+      })
+      return applied.organizationId
+    }
 
     if (applied) {
       await writeAuditLog({

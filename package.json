@@ -21,6 +21,7 @@
     "test:coverage": "vitest run --coverage",
     "check:env": "tsx scripts/check-env-example.ts",
     "check:bundle": "tsx scripts/check-bundle.ts",
+    "check:production": "tsx scripts/check-production.ts",
     "verify": "npm run typecheck && npm run lint && npm run format:check && npm run check:env && npm run test",
     "db:start": "tsx scripts/dev-db.ts start",
     "db:stop": "tsx scripts/dev-db.ts stop",

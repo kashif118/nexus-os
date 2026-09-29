@@ -1,15 +1,18 @@
 import { clientEnv } from '@/kernel/config/env'
 
+import { createConfiguredMailer } from './transports'
+
 /**
  * Outbound email port.
  *
- * Phase 02 ships the port and a development transport only. A Resend adapter
- * lands with the notifications work, when `RESEND_API_KEY` is configured — at
- * which point this file gains one implementation and nothing else changes.
+ * Two real transports live in `./transports` — SMTP and Resend — selected by
+ * `EMAIL_PROVIDER`. The console transport below remains the default, and is for
+ * development only: it prints the message, including verification and reset
+ * links, to the server log.
  *
- * The console transport is not a stub standing in for missing behaviour: the
- * verification and reset FLOWS are complete and testable. Only delivery is
- * local, and it is loud about that.
+ * A deployment left on `console` accepts sign-ups and then strands every one of
+ * them, because nobody receives the link that finishes the account. That is why
+ * `npm run check:production` treats it as a blocker rather than a preference.
  */
 
 export interface EmailMessage {
@@ -41,13 +44,29 @@ class ConsoleMailer implements Mailer {
   }
 }
 
-let mailer: Mailer = new ConsoleMailer()
+let mailer: Mailer | undefined
+let override: Mailer | undefined
 
-export const getMailer = (): Mailer => mailer
+/**
+ * The configured transport.
+ *
+ * Resolved on first use rather than at module load, so importing this module
+ * never triggers configuration validation — a build with no email settings
+ * still succeeds, and a misconfiguration fails at the first send with a message
+ * naming the missing variable.
+ */
+export function getMailer(): Mailer {
+  if (override) return override
+  if (mailer) return mailer
+
+  mailer = createConfiguredMailer() ?? new ConsoleMailer()
+  return mailer
+}
 
 /** Test seam: swap the transport for an in-memory recorder. */
-export const setMailer = (next: Mailer): void => {
-  mailer = next
+export const setMailer = (next: Mailer | undefined): void => {
+  override = next
+  mailer = undefined
 }
 
 export const absoluteUrl = (path: string): string =>

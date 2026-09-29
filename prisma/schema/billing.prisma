@@ -51,6 +51,14 @@ model Subscription {
   currentPeriodEnd DateTime?
   cancelAt         DateTime?
 
+  /// The provider timestamp of the newest event applied to this row.
+  ///
+  /// Webhooks are retried and can arrive OUT OF ORDER — a delayed
+  /// `subscription.updated` landing after `subscription.deleted` would
+  /// otherwise revive a cancelled subscription. An event older than this is
+  /// recorded and ignored.
+  lastProviderEventAt DateTime?
+
   /// Set when an owner changed the plan by hand, in a deployment with billing
   /// handled elsewhere. Distinguishes "we saw a payment" from "somebody said
   /// so", which matters when reconciling.
@@ -104,6 +112,13 @@ model BillingEvent {
 
   processedAt DateTime?
   error       String?
+
+  /// Delivery attempts. A row with attempts > 1 and no processedAt is an event
+  /// the provider is still retrying because this application kept failing it.
+  attempts Int @default(0)
+
+  /// The provider's own event timestamp, used to reject out-of-order state.
+  providerCreatedAt DateTime?
 
   receivedAt DateTime @default(now())
 

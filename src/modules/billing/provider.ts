@@ -50,6 +50,14 @@ export interface ProviderEvent {
   id: string
   type: string
   data: Record<string, unknown>
+  /**
+   * The provider's own creation timestamp.
+   *
+   * Carried because webhook delivery is not ordered: without it there is no way
+   * to tell a delayed retry from genuinely newer state, and the older payload
+   * would win.
+   */
+  createdAt: Date | null
 }
 
 /* -------------------------------------------------------------------------- */
@@ -65,16 +73,49 @@ export interface StripeConfig {
   prices: Record<string, string>
 }
 
+/**
+ * How long to wait on the provider.
+ *
+ * Bounded because this call sits inside a user's request. Without a timeout a
+ * hung connection holds a serverless invocation until the platform kills it,
+ * and the user watches a spinner until then.
+ */
+const API_TIMEOUT_MS = 15_000
+
 export function createStripeProvider(config: StripeConfig): PaymentProvider {
-  const post = async (path: string, form: Record<string, string>) => {
-    const response = await fetch(`${API_BASE}${path}`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${config.secretKey}`,
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams(form).toString(),
-    })
+  const post = async (path: string, form: Record<string, string>, idempotencyKey?: string) => {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS)
+
+    let response: Response
+    try {
+      response = await fetch(`${API_BASE}${path}`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${config.secretKey}`,
+          'content-type': 'application/x-www-form-urlencoded',
+          /*
+           * Stripe deduplicates by this key for 24 hours. Without it, a user
+           * who double-clicks — or a retry after a timeout where the request
+           * actually succeeded — creates a second checkout session, and a
+           * second session against the same customer is a second subscription
+           * waiting to happen.
+           */
+          ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+        },
+        body: new URLSearchParams(form).toString(),
+        signal: controller.signal,
+      })
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(
+          `The payment provider did not respond within ${API_TIMEOUT_MS / 1000} seconds.`,
+        )
+      }
+      throw error
+    } finally {
+      clearTimeout(timeout)
+    }
 
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: { message?: string } }
@@ -95,20 +136,27 @@ export function createStripeProvider(config: StripeConfig): PaymentProvider {
         throw new Error(`No price is configured for the ${input.planKey} plan.`)
       }
 
-      const session = await post('/checkout/sessions', {
-        mode: 'subscription',
-        'line_items[0][price]': price,
-        'line_items[0][quantity]': '1',
-        success_url: input.successUrl,
-        cancel_url: input.cancelUrl,
-        // The organization id travels with the session so the webhook can match
-        // the resulting customer to a tenant without trusting a redirect.
-        'metadata[organizationId]': input.organizationId,
-        'subscription_data[metadata][organizationId]': input.organizationId,
-        ...(input.existingCustomerId
-          ? { customer: input.existingCustomerId }
-          : { customer_email: input.customerEmail }),
-      })
+      const session = await post(
+        '/checkout/sessions',
+        {
+          mode: 'subscription',
+          'line_items[0][price]': price,
+          'line_items[0][quantity]': '1',
+          success_url: input.successUrl,
+          cancel_url: input.cancelUrl,
+          // The organization id travels with the session so the webhook can match
+          // the resulting customer to a tenant without trusting a redirect.
+          'metadata[organizationId]': input.organizationId,
+          'subscription_data[metadata][organizationId]': input.organizationId,
+          ...(input.existingCustomerId
+            ? { customer: input.existingCustomerId }
+            : { customer_email: input.customerEmail }),
+        },
+        // Stable per organization and plan, so a double click or a retried
+        // request reuses the session rather than creating a second one. The
+        // hour bucket lets a genuinely new attempt later on start fresh.
+        `checkout:${input.organizationId}:${input.planKey}:${Math.floor(Date.now() / 3_600_000)}`,
+      )
 
       return {
         url: String(session.url ?? ''),
@@ -132,12 +180,21 @@ export function createStripeProvider(config: StripeConfig): PaymentProvider {
         const parsed = JSON.parse(rawBody) as {
           id?: string
           type?: string
+          created?: number
           data?: { object?: Record<string, unknown> }
         }
 
         if (!parsed.id || !parsed.type) return null
 
-        return { id: parsed.id, type: parsed.type, data: parsed.data?.object ?? {} }
+        return {
+          id: parsed.id,
+          type: parsed.type,
+          data: parsed.data?.object ?? {},
+          createdAt:
+            typeof parsed.created === 'number' && Number.isFinite(parsed.created)
+              ? new Date(parsed.created * 1000)
+              : null,
+        }
       } catch {
         return null
       }
